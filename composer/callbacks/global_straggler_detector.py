@@ -69,14 +69,15 @@ class _ValueWithRank:
         """
         return self._value, self._rank, self._unit
 
-    #edited __str__ to exclude rank, which is now printed with key
+    #edited __str__ to include the word "Rank" for clarity
     def __str__(self) -> str:
         """String representation of the object
         Returns:
             str: strigified object
         """
 
-        return f"{self._value:.2f}{self._unit}"
+        return f"{self._value:.2f}{self._unit}/Rank-{self._rank}"
+
 
 
 @dataclass
@@ -431,21 +432,22 @@ class StragglerDetector:
 
 
                 min_max_data = {
-                    "MinRoundTripTime/Rank-" + str(o_dt.min_elapsed._rank): o_dt.min_elapsed,
-                    "MaxRoundTripTime/Rank-" + str(o_dt.max_elapsed._rank): o_dt.max_elapsed,
-                    "MinPower/Rank-" + str(o_dt.min_power._rank): o_dt.min_power,
-                    "MaxPower/Rank-" + str(o_dt.max_power._rank): o_dt.max_power,
-                    "MinTemp/Rank-" + str(o_dt.min_temp._rank): o_dt.min_temp,
-                    "MaxTemp/Rank-" + str(o_dt.max_temp._rank): o_dt.max_temp,
-                    "MinUtilization/Rank-" + str(o_dt.min_util._rank): o_dt.min_util,
-                    "MaxUtilization/Rank-" + str(o_dt.max_util._rank): o_dt.max_util,
-                    "MinClock/Rank-" + str(o_dt.min_clock._rank): o_dt.min_clock,
-                    "MaxClock/Rank-" + str(o_dt.max_clock._rank): o_dt.max_clock,
-                    "MinBatchLoadLatency/Rank-" + str(o_dt.min_btime._rank): o_dt.min_btime,
-                    "MaxBatchLoadLatency/Rank-" + str(o_dt.max_btime._rank): o_dt.max_btime,
-                    "MinThroughput/Rank-" + str(min_throughput._rank): min_throughput,
-                    "MaxThroughput/Rank-" + str(max_throughput._rank): max_throughput
-                    }
+                    "MinRoundTripTime/Rank": o_dt.min_elapsed,
+                    "MaxRoundTripTime/Rank": o_dt.max_elapsed,
+                    "MinPower/Rank": o_dt.min_power,
+                    "MaxPower/Rank": o_dt.max_power,
+                    "MinTemp/Rank": o_dt.min_temp,
+                    "MaxTemp/Rank": o_dt.max_temp,
+                    "MinUtilization/Rank": o_dt.min_util,
+                    "MaxUtilization/Rank": o_dt.max_util,
+                    "MinClock/Rank": o_dt.min_clock,
+                    "MaxClock/Rank": o_dt.max_clock,
+                    "MinBatchLoadLatency/Rank": o_dt.min_btime,
+                    "MaxBatchLoadLatency/Rank": o_dt.max_btime,
+                    "MinThroughput/Rank": min_throughput,
+                    "MaxThroughput/Rank": max_throughput
+                }
+
 
                 if self.mmcnt > 1 and self.mmcnt < self.world:
                     line = f"^^^^ Bottom {self.mmcnt} Ranks with lowest  Etpt(TF):"
