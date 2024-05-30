@@ -429,21 +429,21 @@ class StragglerDetector:
                 max_throughput = _ValueWithRank(max_flops, max_frank, "TF")
 
 
-                min_max_data = { 
-                    "MinRoundTripTime/Rank-" + str(o_dt.min_elapsed._rank): f"{o_dt.min_elapsed._value:.2f}{o_dt.min_elapsed._unit}", 
-                    "MaxRoundTripTime/Rank-" + str(o_dt.max_elapsed._rank): f"{o_dt.max_elapsed._value:.2f}{o_dt.max_elapsed._unit}", 
-                    "MinPower/Rank-" + str(o_dt.min_power._rank): f"{o_dt.min_power._value:.2f}{o_dt.min_power._unit}", 
-                    "MaxPower/Rank-" + str(o_dt.max_power._rank): f"{o_dt.max_power._value:.2f}{o_dt.max_power._unit}", 
-                    "MinTemp/Rank-" + str(o_dt.min_temp._rank): f"{o_dt.min_temp._value:.2f}{o_dt.min_temp._unit}", 
-                    "MaxTemp/Rank-" + str(o_dt.max_temp._rank): f"{o_dt.max_temp._value:.2f}{o_dt.max_temp._unit}", 
-                    "MinUtilization/Rank-" + str(o_dt.min_util._rank): f"{o_dt.min_util._value:.2f}{o_dt.min_util._unit}", 
-                    "MaxUtilization/Rank-" + str(o_dt.max_util._rank): f"{o_dt.max_util._value:.2f}{o_dt.max_util._unit}", 
-                    "MinClock/Rank-" + str(o_dt.min_clock._rank): f"{o_dt.min_clock._value:.2f}{o_dt.min_clock._unit}", 
-                    "MaxClock/Rank-" + str(o_dt.max_clock._rank): f"{o_dt.max_clock._value:.2f}{o_dt.max_clock._unit}", 
-                    "MinBatchLoadLatency/Rank-" + str(o_dt.min_btime._rank): f"{o_dt.min_btime._value:.2f}{o_dt.min_btime._unit}", 
-                    "MaxBatchLoadLatency/Rank-" + str(o_dt.max_btime._rank): f"{o_dt.max_btime._value:.2f}{o_dt.max_btime._unit}", 
-                    "MinThroughput/Rank-" + str(min_throughput._rank): f"{min_throughput._value:.2f}{min_throughput._unit}",
-                    "MaxThroughput/Rank-" + str(max_throughput._rank): f"{max_throughput._value:.2f}{max_throughput._unit}"
+                min_max_data = {
+                    "MinRoundTripTime/Rank-" + str(o_dt.min_elapsed._rank): o_dt.min_elapsed._value + o_dt.min_elapsed._unit,
+                    "MaxRoundTripTime/Rank-" + str(o_dt.max_elapsed._rank): o_dt.max_elapsed._value + o_dt.max_elapsed._unit,
+                    "MinPower/Rank-" + str(o_dt.min_power._rank): o_dt.min_power._value + o_dt.min_power._unit,
+                    "MaxPower/Rank-" + str(o_dt.max_power._rank): o_dt.max_power._value + o_dt.max_power._unit,
+                    "MinTemp/Rank-" + str(o_dt.min_temp._rank): o_dt.min_temp._value + o_dt.min_temp._unit,
+                    "MaxTemp/Rank-" + str(o_dt.max_temp._rank): o_dt.max_temp._value + o_dt.max_temp._unit,
+                    "MinUtilization/Rank-" + str(o_dt.min_util._rank): o_dt.min_util._value + o_dt.min_util._unit,
+                    "MaxUtilization/Rank-" + str(o_dt.max_util._rank): o_dt.max_util._value + o_dt.max_util._unit,
+                    "MinClock/Rank-" + str(o_dt.min_clock._rank): o_dt.min_clock._value + o_dt.min_clock._unit,
+                    "MaxClock/Rank-" + str(o_dt.max_clock._rank): o_dt.max_clock._value + o_dt.max_clock._unit,
+                    "MinBatchLoadLatency/Rank-" + str(o_dt.min_btime._rank): o_dt.min_btime._value + o_dt.min_btime._unit,
+                    "MaxBatchLoadLatency/Rank-" + str(o_dt.max_btime._rank): o_dt.max_btime._value + o_dt.max_btime._unit,
+                    "MinThroughput/Rank-" + str(min_throughput._rank): min_throughput._value + min_throughput._unit,
+                    "MaxThroughput/Rank-" + str(max_throughput._rank): max_throughput._value + max_throughput._unit
                     }
 
                 if self.mmcnt > 1 and self.mmcnt < self.world:
