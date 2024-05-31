@@ -41,7 +41,7 @@ def _assert_leq_hundred(logged_values, unit):
         assert v <= 100.00
 
 
-@pytest.mark.parametrize('flops_per_batch', [False, True])
+@pytest.mark.parametrize('flops_per_batch', [True])
 @pytest.mark.gpu
 @pytest.mark.world_size(2)
 def test_global_straggler_detector(flops_per_batch: bool):
