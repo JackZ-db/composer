@@ -3,15 +3,16 @@ import collections.abc
 import datetime
 
 import pytest
+import torch
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 from composer.callbacks import GlobalStragglerDetector
 from composer.core import Time
 from composer.loggers import InMemoryLogger
 from composer.trainer import Trainer
-from tests.common import RandomClassificationDataset, SimpleModel, SimpleTransformerClassifier
-from tests.common.datasets import dummy_text_classification_dataloader
-
+from tests.common import RandomClassificationDataset, SimpleModel
+from composer.utils import dist, get_device
 
 def to_float(string, unit):
     index = string.find(unit)
@@ -46,7 +47,7 @@ def _assert_leq_hundred(logged_values, unit):
 @pytest.mark.world_size(2)
 def test_global_straggler_detector(flops_per_batch: bool):
     dist.initialize_dist(get_device(None))
-    
+
     # Construct the callbacks
     global_straggler_detector = GlobalStragglerDetector()
     in_memory_logger = InMemoryLogger()  # track the logged metrics in the in_memory_logger
@@ -56,12 +57,12 @@ def test_global_straggler_detector(flops_per_batch: bool):
         model.flops_per_batch = lambda batch: len(batch) * 100.0  # pyright: ignore[reportGeneralTypeIssues]
     
     # Construct the trainer and train
+    dataset = RandomClassificationDataset()
     trainer = Trainer(
         model=model,
         callbacks=global_straggler_detector,
         loggers=in_memory_logger,
-        train_dataloader=DataLoader(RandomClassificationDataset()),
-        eval_dataloader=DataLoader(RandomClassificationDataset()),
+        train_dataloader=DataLoader(dataset=dataset, sampler=DistributedSampler(dataset=dataset)),
         max_duration='1ep',
     )
     trainer.fit()
