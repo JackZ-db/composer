@@ -71,22 +71,24 @@ def test_global_straggler_detector(flops_per_batch: bool):
     for key in in_memory_logger.data.keys():
         print(key)
 
-    _assert_no_negative_values(in_memory_logger.data['MinRoundTripTime/Rank'], "ms")
-    _assert_no_negative_values(in_memory_logger.data['MaxRoundTripTime/Rank'], "ms")
-    _assert_no_negative_values(in_memory_logger.data['MinPower/Rank'], "W")
-    _assert_no_negative_values(in_memory_logger.data['MaxPower/Rank'], "W")
-    _assert_no_negative_values(in_memory_logger.data['MinTemp/Rank'], "C")
-    _assert_no_negative_values(in_memory_logger.data['MaxTemp/Rank'], "C")
-    _assert_no_negative_values(in_memory_logger.data['MinUtilization/Rank'], "%")
-    _assert_no_negative_values(in_memory_logger.data['MaxUtilization/Rank'], "%")
-    _assert_leq_hundred(in_memory_logger.data['MinUtilization/Rank'], "%")
-    _assert_leq_hundred(in_memory_logger.data['MaxUtilization/Rank'], "%")
-    _assert_no_negative_values(in_memory_logger.data['MinClock/Rank'], "MHz")
-    _assert_no_negative_values(in_memory_logger.data['MaxClock/Rank'], "MHz")
-    _assert_no_negative_values(in_memory_logger.data['MinBatchLoadLatency/Rank'], "us")
-    _assert_no_negative_values(in_memory_logger.data['MaxBatchLoadLatency/Rank'], "us")
-    _assert_no_negative_values(in_memory_logger.data['MinThroughput/Rank'], "TF")
-    _assert_no_negative_values(in_memory_logger.data['MaxThroughput/Rank'], "TF")
+    # only rank 0 logs
+    if dist.get_local_rank() == 0:
+        _assert_no_negative_values(in_memory_logger.data['MinRoundTripTime/Rank'], "ms")
+        _assert_no_negative_values(in_memory_logger.data['MaxRoundTripTime/Rank'], "ms")
+        _assert_no_negative_values(in_memory_logger.data['MinPower/Rank'], "W")
+        _assert_no_negative_values(in_memory_logger.data['MaxPower/Rank'], "W")
+        _assert_no_negative_values(in_memory_logger.data['MinTemp/Rank'], "C")
+        _assert_no_negative_values(in_memory_logger.data['MaxTemp/Rank'], "C")
+        _assert_no_negative_values(in_memory_logger.data['MinUtilization/Rank'], "%")
+        _assert_no_negative_values(in_memory_logger.data['MaxUtilization/Rank'], "%")
+        _assert_leq_hundred(in_memory_logger.data['MinUtilization/Rank'], "%")
+        _assert_leq_hundred(in_memory_logger.data['MaxUtilization/Rank'], "%")
+        _assert_no_negative_values(in_memory_logger.data['MinClock/Rank'], "MHz")
+        _assert_no_negative_values(in_memory_logger.data['MaxClock/Rank'], "MHz")
+        _assert_no_negative_values(in_memory_logger.data['MinBatchLoadLatency/Rank'], "us")
+        _assert_no_negative_values(in_memory_logger.data['MaxBatchLoadLatency/Rank'], "us")
+        _assert_no_negative_values(in_memory_logger.data['MinThroughput/Rank'], "TF")
+        _assert_no_negative_values(in_memory_logger.data['MaxThroughput/Rank'], "TF")
 
     
 
