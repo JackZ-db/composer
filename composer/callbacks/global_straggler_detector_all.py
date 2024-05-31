@@ -868,7 +868,7 @@ class StragglerDetector:
 
 
 
-class GlobalStragglerDetector(Callback):
+class GlobalStragglerDetectorAll(Callback):
     """Logs the minimum and maximum training values across all ranks for the following metrics:
 
         RoundTripTime: Time spent in all the traced ops in the current batch
