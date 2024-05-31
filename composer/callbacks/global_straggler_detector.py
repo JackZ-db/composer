@@ -81,7 +81,7 @@ class _ValueWithRank:
 
 
 @dataclass
-class _StragglerData:
+class _MinMaxStragglerData:
     """This is an internal dataclass, not for use outside this module
     Attributes:
         min_elapsed (_ValueWithRank) min iteration time across all ranks
@@ -119,6 +119,27 @@ class _StragglerData:
     max_clock = _ValueWithRank(sys.float_info.min, 0, "MHz")
     aflops: List[_ValueWithRank] = None
 
+
+@dataclass
+class _AllStragglerData:
+    """This is an internal dataclass, not for use outside this module
+    Attributes:
+        elapsed: List[_ValueWithRank] - iteration time across all ranks
+        btime: List[_ValueWithRank] - cpu time across all ranks
+        temp: List[_ValueWithRank] - gpu temp across all ranks
+        power: List[_ValueWithRank] - gpu power across all ranks
+        util: List[_ValueWithRank] - gpu util across all ranks
+        clock: List[_ValueWithRank] - gpu clock across all ranks
+        aflops: List[_ValueWithRank] - array of (_ValueWithRank)
+    """
+    
+    elapsed: List[_ValueWithRank] =  None
+    btime: List[_ValueWithRank] =  None
+    temp: List[_ValueWithRank] =  None
+    power: List[_ValueWithRank] =  None
+    util: List[_ValueWithRank] =  None
+    clock: List[_ValueWithRank] =  None
+    aflops: List[_ValueWithRank] =  None
 
 class StragglerDetector:
     """Singleton Class implementing per rank Straggler Detector
@@ -393,7 +414,7 @@ class StragglerDetector:
         return delta, batch_delta, temp, power, util, clock
 
     # Modified following method from original Megatron-LM 
-    def report(self, total_flops: float = 0.0, log_interval: int = 0) -> Tuple[bool, dict]:
+    def report_min_max(self, total_flops: float = 0.0, log_interval: int = 0) -> Tuple[bool, dict]:
         """Function to log the min/max metircs and the associated rank over a time period
         It finds the slowest and fastest rank among all ranks. It should be
         called by all ranks, but only rank-0 prints the analysis
@@ -460,10 +481,62 @@ class StragglerDetector:
                         line += f" {o_dt.aflops[i+shift]},"
                     self.logger.info(line)
                 ret = True
+        
+         # Check/Communicate if tracking is turned off or on
+        self._check_toggle()
+        return ret, min_max_data
+
+    def report_all(self, total_flops: float = 0.0, log_interval: int = 0) -> Tuple[bool, dict]:
+        """Function to log all metircs and the associated rank over a time period
+        It finds gpu metrics across all ranks. It should be
+        called by all ranks, but only rank-0 prints the analysis
+        At the end it checks, if the straggler detector should
+        remain active or if it should be deactivated.
+        Args:
+            total_flops (float, optional): The theoretical flops over the period. Defaults to 0.0.
+            log_interval (int, optional): The training interval over which reporting is called(ms)
+                                          Defaults to 0.
+        Returns:
+            bool: True if reported, else False
+            dict: Dict of all metrics and their associated ranks, empty if not rank-0
+        """
+        ret = False
+        all_data = {}
+        if not self._off and total_flops > 0.0 and log_interval > 0:
+            elapsed, btime_us, temp, power, util, clock = self.elapsed()  # get raw time
+            ptime = elapsed / (log_interval * 1.0)  # avg per iteration elapsed time, ms
+            btime = btime_us / (log_interval * 1.0)  # avg per iteration get_batch time, us
+            api_flops = total_flops / (log_interval * 1.0)  # avg per iteration flops, ms
+            
+            apir_flops = api_flops / (
+                ptime * 10 ** 9
+            )
+            et_flops = apir_flops / self.amp  # Estimated TFLOPs, not tracing backward
+
+            o_dt = self._get_all(
+                ptime, btime, float(temp), float(power), float(util), float(clock), et_flops,
+            )
+            if self.rank == 0:
+                data = {
+                    "RoundTripTime": sorted(o_dt.elapsed, key=lambda x: x._rank),
+                    "BatchLoadLatency": sorted(o_dt.btime, key=lambda x: x._rank),
+                    "Temp": sorted(o_dt.temp, key=lambda x: x._rank),
+                    "Power": sorted(o_dt.power, key=lambda x: x._rank),
+                    "Utilization": sorted(o_dt.util, key=lambda x: x._rank),
+                    "Clock": sorted(o_dt.clock, key=lambda x: x._rank),
+                    "Throughput": sorted(o_dt.aflops, key=lambda x: x._rank)
+                }
+              
+                for key, valueList in data.items():
+                    for val in valueList:
+                        all_data[f"{key}/Rank-{val._rank}"] = val
+
+                ret = True
+            
 
         # Check/Communicate if tracking is turned off or on
         self._check_toggle()
-        return ret, min_max_data
+        return ret, all_data
 
     def _check_toggle(self) -> None:
         """Helper method to check if a request to toggle the collection state was made
@@ -549,7 +622,7 @@ class StragglerDetector:
         util: float,
         clock: float,
         flops: float,
-    ) -> Union[_StragglerData, None]:
+    ) -> Union[_MinMaxStragglerData, None]:
         """Helper function to find the min/max values
         Args:
             ptime (float): avg per iteration gpu time
@@ -560,7 +633,7 @@ class StragglerDetector:
             clock (float): gpu clock at the time of reporting
             flops (float): estimated flops for the rank
         Returns:
-            Union[_StragglerData, None]: It contains the min/max of few metrics and the
+            Union[_MinMaxStragglerData, None]: It contains the min/max of few metrics and the
                                          corresponding rank it also has sorted list of
                                          all (flops, rank) sorted by flops (aflops)
                                          or returns None if collecton is disabled
@@ -568,7 +641,7 @@ class StragglerDetector:
         if self._off:
             return None
         # initialize output data object
-        o_dt = _StragglerData()
+        o_dt = _MinMaxStragglerData()
 
         prof_data = {}
         prof_data["rank"] = self.rank
@@ -653,6 +726,65 @@ class StragglerDetector:
                 _ValueWithRank(d.get("flops"), d.get("rank")) for _, d in enumerate(data_list)
             ]
             o_dt.aflops.sort(key=lambda val_with_rank: val_with_rank()[0])
+        # wait for everyone here
+        torch.distributed.barrier()
+
+        return o_dt
+
+    def _get_all(
+        self,
+        ptime: float,
+        btime: float,
+        temp: float,
+        power: float,
+        util: float,
+        clock: float,
+        flops: float,
+    ) -> Union[_AllStragglerData, None]:
+        """Helper function to get data for all ranks
+        Args:
+            ptime (float): avg per iteration gpu time
+            btime (float): avg per iteration cpu time
+            temp (float): gpu temp at the time of reporting
+            power (float): gpu power at the time of reporting
+            util (float): gpu util at the time of reporting
+            clock (float): gpu clock at the time of reporting
+            flops (float): estimated flops for the rank
+        Returns:
+            Union[_AllStragglerData, None]: It contains the data for all ranks for each metric
+                                         or returns None if collection is disabled
+        """
+        if self._off:
+            return None
+        # initialize output data object
+        o_dt = _AllStragglerData()
+
+        prof_data = {}
+        prof_data["rank"] = self.rank
+        prof_data["time"] = ptime
+        prof_data["btime"] = btime
+        prof_data["temp"] = temp
+        prof_data["power"] = power
+        prof_data["util"] = util
+        prof_data["clock"] = clock
+        prof_data["flops"] = flops
+
+        if self.rank == 0:
+            data_list = [prof_data] * self.world
+        else:
+            data_list = None
+
+        # this is blocking by default
+        torch.distributed.gather_object(prof_data, object_gather_list=data_list, dst=0)
+
+        if self.rank == 0:
+            o_dt.elapsed = [_ValueWithRank(data["time"], data["rank"], "ms") for data in data_list]
+            o_dt.btime = [_ValueWithRank(data["btime"], data["rank"], "us") for data in data_list]
+            o_dt.temp = [_ValueWithRank(data["temp"], data["rank"], "C") for data in data_list]
+            o_dt.power = [_ValueWithRank(data["power"], data["rank"], "W") for data in data_list]
+            o_dt.util = [_ValueWithRank(data["util"], data["rank"], "%") for data in data_list]
+            o_dt.clock = [_ValueWithRank(data["clock"], data["rank"], "MHz") for data in data_list]
+            o_dt.aflops = [_ValueWithRank(data["flops"], data["rank"], "TF") for data in data_list]
         # wait for everyone here
         torch.distributed.barrier()
 
@@ -820,11 +952,13 @@ class GlobalStragglerDetector(Callback):
 
     
     Args:
-        None
+        log_all_data (bool, optional): True if user wants to log data for all ranks, not just the min/max.
+        Defaults to False.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, log_all_data: bool = False) -> None:
         self.stimer = None
+        self.log_all_data = log_all_data
 
     def init(self, state: State, logger: Logger) -> None:
         self.stimer = StragglerDetector()
@@ -854,9 +988,12 @@ class GlobalStragglerDetector(Callback):
                 )
             device_flops_per_batch = model_flops_per_batch(state.batch)
             self.stimer.stop()
-            is_rank_zero, min_max_data = self.stimer.report(total_flops=device_flops_per_batch, log_interval=1)
+            if self.log_all_data:
+                is_rank_zero, data = self.stimer.report_all(total_flops=device_flops_per_batch, log_interval=1)
+            else:
+                is_rank_zero, data = self.stimer.report_min_max(total_flops=device_flops_per_batch, log_interval=1)
             if is_rank_zero:
-                logger.log_metrics(min_max_data)
+                logger.log_metrics(data)
 
         else:
             raise ValueError("The 'flops_per_batch' attribute is not present in this model; StragglerDetector requires tracking flops per batch.")
@@ -869,5 +1006,5 @@ class GlobalStragglerDetector(Callback):
     
     def after_dataloader(self, state: State, logger: Logger):
         self.stimer.stop()
-        self.stimer.report()
+        self.stimer.report_min_max()
         self.stimer.bdata = False
