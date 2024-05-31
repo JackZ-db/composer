@@ -27,7 +27,7 @@ def to_float(string, unit):
 def _assert_no_negative_values(logged_values, unit):
     for timestamp, v in logged_values:
         del timestamp  # unused
-        v = to_float(v, unit)
+        v = to_float(str(v), unit)
         if isinstance(v, Time):
             assert int(v) >= 0
         elif isinstance(v, datetime.timedelta):
@@ -38,7 +38,7 @@ def _assert_no_negative_values(logged_values, unit):
 def _assert_leq_hundred(logged_values, unit):
     for timestamp, v in logged_values:
         del timestamp  # unused
-        v = to_float(v, unit)
+        v = to_float(str(v), unit)
         assert v <= 100.00
 
 
