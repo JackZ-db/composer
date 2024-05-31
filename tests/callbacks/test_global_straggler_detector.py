@@ -45,6 +45,8 @@ def _assert_leq_hundred(logged_values, unit):
 @pytest.mark.gpu
 @pytest.mark.world_size(2)
 def test_global_straggler_detector(flops_per_batch: bool):
+    dist.initialize_dist(get_device(None))
+    
     # Construct the callbacks
     global_straggler_detector = GlobalStragglerDetector()
     in_memory_logger = InMemoryLogger()  # track the logged metrics in the in_memory_logger
