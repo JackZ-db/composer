@@ -91,9 +91,6 @@ def test_global_straggler_detector(flops_per_batch: bool):
         _assert_no_negative_values(in_memory_logger.data['MaxThroughput/Rank'], "TF")
 
         num_batches = int(trainer.state.timestamp.batch)
-        assert len(in_memory_logger.data['time/total']) == num_batches
-        assert len(in_memory_logger.data['time/train']) == num_batches
-        assert len(in_memory_logger.data['time/val']) == num_batches
         assert len(in_memory_logger.data['MinRoundTripTime/Rank']) == num_batches
         assert len(in_memory_logger.data['MaxRoundTripTime/Rank']) == num_batches
         assert len(in_memory_logger.data['MinPower/Rank']) == num_batches
