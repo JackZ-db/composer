@@ -90,59 +90,23 @@ def test_global_straggler_detector(flops_per_batch: bool):
         _assert_no_negative_values(in_memory_logger.data['MinThroughput/Rank'], "TF")
         _assert_no_negative_values(in_memory_logger.data['MaxThroughput/Rank'], "TF")
 
-    
+        num_batches = int(trainer.state.timestamp.batch)
+        assert len(in_memory_logger.data['time/total']) == num_batches
+        assert len(in_memory_logger.data['time/train']) == num_batches
+        assert len(in_memory_logger.data['time/val']) == num_batches
+        assert len(in_memory_logger.data['MinRoundTripTime/Rank']) == num_batches
+        assert len(in_memory_logger.data['MaxRoundTripTime/Rank']) == num_batches
+        assert len(in_memory_logger.data['MinPower/Rank']) == num_batches
+        assert len(in_memory_logger.data['MaxPower/Rank']) == num_batches
+        assert len(in_memory_logger.data['MinTemp/Rank']) == num_batches
+        assert len(in_memory_logger.data['MaxTemp/Rank']) == num_batches
+        assert len(in_memory_logger.data['MinUtilization/Rank']) == num_batches
+        assert len(in_memory_logger.data['MaxUtilization/Rank']) == num_batches
+        assert len(in_memory_logger.data['MinClock/Rank']) == num_batches
+        assert len(in_memory_logger.data['MaxClock/Rank']) == num_batches
+        assert len(in_memory_logger.data['MinBatchLoadLatency/Rank']) == num_batches
+        assert len(in_memory_logger.data['MaxBatchLoadLatency/Rank']) == num_batches
+        assert len(in_memory_logger.data['MinThroughput/Rank']) == num_batches
+        assert len(in_memory_logger.data['MaxThroughput/Rank']) == num_batches
 
-"""
-def test_global_straggler_detector_tokens():
-    model = SimpleTransformerClassifier()
-    dataloader = dummy_text_classification_dataloader()
-    dataloader.dataset.max_seq_len = dataloader.dataset.sequence_length  # type: ignore
-    in_memory_logger = InMemoryLogger()  # track the logged metrics in the in_memory_logger
-    global_straggler_detector = GlobalStragglerDetector()
-    trainer = Trainer(
-        model=model,
-        train_dataloader=dataloader,
-        callbacks=global_straggler_detector,
-        loggers=in_memory_logger,
-        max_duration='1ep',
-    )
-    trainer.fit()
 
-
-    _assert_no_negative_values(in_memory_logger.data['MinRoundTripTime/Rank'], "ms")
-    _assert_no_negative_values(in_memory_logger.data['MaxRoundTripTime/Rank'], "ms")
-    _assert_no_negative_values(in_memory_logger.data['MinPower/Rank'], "W")
-    _assert_no_negative_values(in_memory_logger.data['MaxPower/Rank'], "W")
-    _assert_no_negative_values(in_memory_logger.data['MinTemp/Rank'], "C")
-    _assert_no_negative_values(in_memory_logger.data['MaxTemp/Rank'], "C")
-    _assert_no_negative_values(in_memory_logger.data['MinUtilization/Rank'], "%")
-    _assert_no_negative_values(in_memory_logger.data['MaxUtilization/Rank'], "%")
-    _assert_leq_hundred(in_memory_logger.data['MinUtilization/Rank'], "%")
-    _assert_leq_hundred(in_memory_logger.data['MaxUtilization/Rank'], "%")
-    _assert_no_negative_values(in_memory_logger.data['MinClock/Rank'], "MHz")
-    _assert_no_negative_values(in_memory_logger.data['MaxClock/Rank'], "MHz")
-    _assert_no_negative_values(in_memory_logger.data['MinBatchLoadLatency/Rank'], "us")
-    _assert_no_negative_values(in_memory_logger.data['MaxBatchLoadLatency/Rank'], "us")
-    _assert_no_negative_values(in_memory_logger.data['MinThroughput/Rank'], "TF")
-    _assert_no_negative_values(in_memory_logger.data['MaxThroughput/Rank'], "TF")
-
-    assert isinstance(trainer.state.dataloader, collections.abc.Sized)
-    assert trainer.state.dataloader_label is not None
-    assert trainer.state.dataloader_len is not None
-    expected_step_calls = (trainer.state.dataloader_len - len(global_straggler_detector.history_samples) +
-                           1) * int(trainer.state.timestamp.epoch)
-    assert len(in_memory_logger.data['MinRoundTripTime/Rank']) == expected_step_calls
-    assert len(in_memory_logger.data['MaxRoundTripTime/Rank']) == expected_step_calls
-    assert len(in_memory_logger.data['MinPower/Rank']) == expected_step_calls
-    assert len(in_memory_logger.data['MaxPower/Rank']) == expected_step_calls
-    assert len(in_memory_logger.data['MinTemp/Rank']) == expected_step_calls
-    assert len(in_memory_logger.data['MaxTemp/Rank']) == expected_step_calls
-    assert len(in_memory_logger.data['MinUtilization/Rank']) == expected_step_calls
-    assert len(in_memory_logger.data['MaxUtilization/Rank']) == expected_step_calls
-    assert len(in_memory_logger.data['MinClock/Rank']) == expected_step_calls
-    assert len(in_memory_logger.data['MaxClock/Rank']) == expected_step_calls
-    assert len(in_memory_logger.data['MinBatchLoadLatency/Rank']) == expected_step_calls
-    assert len(in_memory_logger.data['MaxBatchLoadLatency/Rank']) == expected_step_calls
-    assert len(in_memory_logger.data['MinThroughput/Rank']) == expected_step_calls
-    assert len(in_memory_logger.data['MaxThroughput/Rank']) == expected_step_calls
-"""
