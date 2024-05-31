@@ -67,6 +67,7 @@ def test_global_straggler_detector(flops_per_batch: bool):
     )
     trainer.fit()
 
+    print("Length of logger.data: " + str(len(in_memory_logger.data)))
     _assert_no_negative_values(in_memory_logger.data['MinRoundTripTime/Rank'], "ms")
     _assert_no_negative_values(in_memory_logger.data['MaxRoundTripTime/Rank'], "ms")
     _assert_no_negative_values(in_memory_logger.data['MinPower/Rank'], "W")
