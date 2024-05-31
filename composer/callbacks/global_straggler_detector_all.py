@@ -484,8 +484,8 @@ class StragglerDetector:
         
          # Check/Communicate if tracking is turned off or on
         self._check_toggle()
-        return ret, all_data
-        
+        return ret, min_max_data
+
     def report_all(self, total_flops: float = 0.0, log_interval: int = 0) -> Tuple[bool, dict]:
         """Function to log all metircs and the associated rank over a time period
         It finds gpu metrics across all ranks. It should be
