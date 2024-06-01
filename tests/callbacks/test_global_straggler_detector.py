@@ -87,11 +87,12 @@ def test_global_straggler_detector_all(device, flops_per_batch: bool):
         for metric, valueList in in_memory_logger.data.items():
             assert len(valueList) == num_batches
 
+@device('gpu')
 @pytest.mark.parametrize('flops_per_batch', [True])
 @pytest.mark.gpu
 @pytest.mark.world_size(2)
-def test_global_straggler_detector_min_max(flops_per_batch: bool):
-    dist.initialize_dist(get_device(None))
+def test_global_straggler_detector_min_max(device, flops_per_batch: bool):
+    dist.initialize_dist(get_device(device))
 
     # Construct the callbacks
     global_straggler_detector = GlobalStragglerDetector()
