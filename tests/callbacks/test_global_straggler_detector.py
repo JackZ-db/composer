@@ -85,6 +85,7 @@ def test_global_straggler_detector_all(device, flops_per_batch: bool):
         
         num_batches = int(trainer.state.timestamp.batch)
         for metric, valueList in in_memory_logger.data.items():
+            print("Metric: ")
             print(metric)
             for entry in valueList:
                 print(entry)
