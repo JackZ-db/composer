@@ -1006,5 +1006,8 @@ class GlobalStragglerDetector(Callback):
     
     def after_dataloader(self, state: State, logger: Logger):
         self.stimer.stop()
-        self.stimer.report_min_max()
+        if self.log_all_data:
+            self.stimer.report_all()
+        else:
+            self.stimer.report_min_max()
         self.stimer.bdata = False
