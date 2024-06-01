@@ -9,6 +9,7 @@ from composer.core import Time
 from composer.loggers import InMemoryLogger
 from composer.trainer import Trainer
 from tests.common import RandomClassificationDataset, SimpleModel
+from tests.common import device
 from composer.utils import dist, get_device
 
 def to_float(string, unit):
@@ -103,11 +104,12 @@ def test_global_straggler_detector_min_max(flops_per_batch: bool):
         assert len(in_memory_logger.data['MinThroughput/Rank']) == num_batches
         assert len(in_memory_logger.data['MaxThroughput/Rank']) == num_batches
 
+@device('gpu')
 @pytest.mark.parametrize('flops_per_batch', [True])
 @pytest.mark.gpu
 @pytest.mark.world_size(2)
-def test_global_straggler_detector_all(flops_per_batch: bool):
-    dist.initialize_dist(get_device(None))
+def test_global_straggler_detector_all(device, flops_per_batch: bool):
+    dist.initialize_dist(get_device(device))
 
     # Construct the callbacks
     global_straggler_detector = GlobalStragglerDetector(log_all_data=True)
