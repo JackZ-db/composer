@@ -39,7 +39,6 @@ def _assert_leq_hundred(logged_values, unit):
         v = to_float(str(v), unit)
         assert v <= 100.00
 
-"""
 @device('gpu')
 @pytest.mark.parametrize('flops_per_batch', [True])
 @pytest.mark.gpu
@@ -90,8 +89,8 @@ def test_global_straggler_detector_all(device, flops_per_batch: bool):
             for entry in valueList:
                 print(entry)
             #assert len(valueList) == num_batches
-"""
 
+"""
 @device('gpu')
 @pytest.mark.parametrize('flops_per_batch', [True])
 @pytest.mark.gpu
@@ -157,3 +156,4 @@ def test_global_straggler_detector_min_max(device, flops_per_batch: bool):
         assert len(in_memory_logger.data['MinThroughput/Rank']) == num_batches
         assert len(in_memory_logger.data['MaxThroughput/Rank']) == num_batches
 
+"""
