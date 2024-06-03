@@ -88,7 +88,7 @@ def test_global_straggler_detector_all(device, flops_per_batch: bool):
             print(metric)
             for entry in valueList:
                 print(entry)
-            #assert len(valueList) == num_batches
+            assert len(valueList) == num_batches
 
 """
 @device('gpu')
