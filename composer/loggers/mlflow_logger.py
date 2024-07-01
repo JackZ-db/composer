@@ -532,6 +532,8 @@ class MLFlowLogger(LoggerDestination):
 
             assert isinstance(self._run_id, str)
             mlflow.flush_async_logging()
+
+            log.info(f'Async Logging Flushed.')
             self._mlflow_client.set_terminated(self._run_id)
             mlflow.end_run()
 
