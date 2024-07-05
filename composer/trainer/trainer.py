@@ -355,12 +355,14 @@ def _adjust_device_train_microbatch_size(state: State):
     else:
         original_microbatch_size = state.device_train_microbatch_size
         state.device_train_microbatch_size = max(int(original_microbatch_size / 2), 1)
+        """
         warnings.warn(
             RuntimeWarning(
                 'CUDA out of memory detected. Train microbatch size will be decreased from '
                 f'{original_microbatch_size} -> {state.device_train_microbatch_size}.',
             ),
         )
+        """
     # Clear gradients in case failure happened during backwards pass
     if hasattr(state, 'outputs'):
         del state.outputs
@@ -2731,6 +2733,20 @@ class Trainer:
         # Any in-place changes to a microbatch will be reflected in the device batch.
         device_batch = self.state.batch
 
+        # Track the lowest attempted microbatch size that still OOM'd
+        last_oom_microbatch_size = None
+
+        # Track the highest microbatch size that didn't OOM
+        first_non_oom_microbatch_size = None
+
+        # Maximum number of times to binary search upwards for a successful microbatch size
+        max_search_steps = 5
+
+        # Track the number of times we binary search upwards for a successful microbatch size
+        num_search_steps = 0
+
+        original_microbatch_size = self.state.device_train_microbatch_size
+
         # Retry until we successfully complete training and return loss
         while True:
             # Reset train_metrics on every batch
@@ -2797,11 +2813,74 @@ class Trainer:
                     dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
                     all_ranks_finished = all_ranks_finished_tensor.item() == 1
                 if found_cuda_oom == 1:
-                    _adjust_device_train_microbatch_size(self.state)
-                    # Skip return and rerun after handling oom
-                    continue
+                    last_oom_microbatch_size = self.state.device_train_microbatch_size
+                    if num_search_steps == 0:
+                        _adjust_device_train_microbatch_size(self.state)
+                        # Skip return and continue halving microbatch size to find a non-oom size
+                        continue
+                    if num_search_steps > 0 and num_search_steps < max_search_steps: # Already in the process of finding non-power-of-two microbatch size
+                        num_search_steps += 1 
+                        median_microbatch_size = (first_non_oom_microbatch_size + last_oom_microbatch_size) / 2
+                        self.state.device_train_microbatch_size = median_microbatch_size
+
+                        # Clear gradients in case failure happened during backwards pass
+                        if hasattr(self.state, 'outputs'):
+                            del self.state.outputs
+                        if hasattr(self.state, 'loss'):
+                            del self.state.loss
+                        for optimizer in self.state.optimizers:
+                            optimizer.zero_grad(set_to_none=True)
+                        if self.state.scaler is not None:
+                            self.state.scaler._per_optimizer_states = defaultdict(_refresh_per_optimizer_state)
+                        _fsdp_reshard_and_cleanup(self.state.model)
+                        torch.cuda.empty_cache()
+
+                        # Skip return and keep searching for highest non-oom
+                        continue
+                    elif num_search_steps == max_search_steps: # Stop searching, choose most recently successful size
+                        num_search_steps += 1 
+                        self.state.device_train_microbatch_size = first_non_oom_microbatch_size
+
+                        # Clear gradients in case failure happened during backwards pass
+                        if hasattr(self.state, 'outputs'):
+                            del self.state.outputs
+                        if hasattr(self.state, 'loss'):
+                            del self.state.loss
+                        for optimizer in self.state.optimizers:
+                            optimizer.zero_grad(set_to_none=True)
+                        if self.state.scaler is not None:
+                            self.state.scaler._per_optimizer_states = defaultdict(_refresh_per_optimizer_state)
+                        _fsdp_reshard_and_cleanup(self.state.model)
+                        torch.cuda.empty_cache()
+
+                        # Skip return and rerun to obtain loss
+                        continue
+                    else: # Only end up here if a previously successful microbatch size is no longer successful in the same training step
+                        self.state.device_train_microbatch_size = original_microbatch_size
+                        _adjust_device_train_microbatch_size(self.state)
+                        last_oom_microbatch_size = None
+                        first_non_oom_microbatch_size = None
+                        num_search_steps = 0
+
+                        # Restart the entire search process, starting with halving and then with upward binary search
+                        continue
+                else:
+                    if num_search_steps < max_search_steps and last_oom_microbatch_size is not None: # Previous OOMs in this training step 
+                            first_non_oom_microbatch_size = self.state.device_train_microbatch_size
+                            median_microbatch_size = (first_non_oom_microbatch_size + last_oom_microbatch_size) / 2 
+                            self.state.device_train_microbatch_size = median_microbatch_size
+                            num_search_steps += 1
+                            continue
+                    
+            
             # Log microbatch and return loss if we've completed without OOMing.
             assert self.state.device_train_microbatch_size is not None
+            warnings.warn(
+                RuntimeWarning(
+                    'CUDA out of memory detected. Train microbatch size will be decreased from '
+                    f'{original_microbatch_size} -> {self.state.device_train_microbatch_size}.',
+                    ),
+            )
             self.logger.log_metrics({'trainer/device_train_microbatch_size': self.state.device_train_microbatch_size})
             self.first_batch_complete = True
             return total_loss_dict
