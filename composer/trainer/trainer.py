@@ -2822,7 +2822,7 @@ class Trainer:
                         continue
                     if num_search_steps > 0 and num_search_steps < max_search_steps: # Already in the process of finding non-power-of-two microbatch size
                         num_search_steps += 1 
-                        median_microbatch_size = (first_non_oom_microbatch_size + last_oom_microbatch_size) / 2
+                        median_microbatch_size = int(first_non_oom_microbatch_size + last_oom_microbatch_size) / 2
                         self.state.device_train_microbatch_size = median_microbatch_size
 
                         # Clear gradients in case failure happened during backwards pass
@@ -2869,7 +2869,7 @@ class Trainer:
                 else:
                     if num_search_steps < max_search_steps and last_oom_microbatch_size is not None: # Previous OOMs in this training step 
                             first_non_oom_microbatch_size = self.state.device_train_microbatch_size
-                            median_microbatch_size = (first_non_oom_microbatch_size + last_oom_microbatch_size) / 2 
+                            median_microbatch_size = int(first_non_oom_microbatch_size + last_oom_microbatch_size) / 2 
                             self.state.device_train_microbatch_size = median_microbatch_size
                             num_search_steps += 1
                             continue
@@ -2877,12 +2877,13 @@ class Trainer:
             
             # Log microbatch and return loss if we've completed without OOMing.
             assert self.state.device_train_microbatch_size is not None
-            warnings.warn(
-                RuntimeWarning(
-                    'CUDA out of memory detected. Train microbatch size will be decreased from '
-                    f'{original_microbatch_size} -> {self.state.device_train_microbatch_size}.',
-                    ),
-            )
+            if original_microbatch_size != self.state.device_train_microbatch_size:
+                warnings.warn(
+                    RuntimeWarning(
+                        'CUDA out of memory detected. Train microbatch size will be decreased from '
+                        f'{original_microbatch_size} -> {self.state.device_train_microbatch_size}.',
+                        ),
+                )
             self.logger.log_metrics({'trainer/device_train_microbatch_size': self.state.device_train_microbatch_size})
             self.first_batch_complete = True
             return total_loss_dict
