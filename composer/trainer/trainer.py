@@ -2750,9 +2750,14 @@ class Trainer:
         original_microbatch_size = self.state.device_train_microbatch_size
 
         # Retry until we successfully complete training and return loss
+        i = 1
         while True:
             # Reset train_metrics on every batch
             # Placing reset here ensures that if auto grad accum catches an OOM, incomplete metric state is cleared
+
+            print("Iteration " + str(i) +": " + str(self.state.device_train_microbatch_size))
+            i+=1
+            
             if self.state.train_metrics is not None:  # pyright: ignore[reportUnnecessaryComparison]
                 for metric in self.state.train_metrics.values():
                     metric.reset()
