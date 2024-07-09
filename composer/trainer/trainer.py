@@ -2757,7 +2757,7 @@ class Trainer:
 
             print("Iteration " + str(i) +": " + str(self.state.device_train_microbatch_size))
             i+=1
-            
+
             if self.state.train_metrics is not None:  # pyright: ignore[reportUnnecessaryComparison]
                 for metric in self.state.train_metrics.values():
                     metric.reset()
@@ -2827,7 +2827,7 @@ class Trainer:
                         continue
                     if num_search_steps > 0 and num_search_steps < max_search_steps: # Already in the process of finding non-power-of-two microbatch size
                         num_search_steps += 1 
-                        median_microbatch_size = int(first_non_oom_microbatch_size + last_oom_microbatch_size) / 2
+                        median_microbatch_size = int((first_non_oom_microbatch_size + last_oom_microbatch_size) // 2)
                         self.state.device_train_microbatch_size = median_microbatch_size
 
                         # Clear gradients in case failure happened during backwards pass
@@ -2874,7 +2874,7 @@ class Trainer:
                 else:
                     if num_search_steps < max_search_steps and last_oom_microbatch_size is not None: # Previous OOMs in this training step 
                             first_non_oom_microbatch_size = self.state.device_train_microbatch_size
-                            median_microbatch_size = int(first_non_oom_microbatch_size + last_oom_microbatch_size) / 2 
+                            median_microbatch_size =  int((first_non_oom_microbatch_size + last_oom_microbatch_size) // 2)
                             self.state.device_train_microbatch_size = median_microbatch_size
                             num_search_steps += 1
                             continue
