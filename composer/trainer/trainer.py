@@ -288,8 +288,6 @@ def _get_initial_device_train_microbatch_size(
         try:
             batch_size = getattr(train_dataloader, 'batch_size')
             print("Batch size: " + str(batch_size))
-            batch_size = 32768
-            print("Batch size: " + str(batch_size))
         except AttributeError as e:
             # Error message when `device_train_microbatch_size` is None
             # Note: This code path will be removed after `auto` is made default
