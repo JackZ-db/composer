@@ -287,7 +287,7 @@ def _get_initial_device_train_microbatch_size(
             return None
         try:
             batch_size = getattr(train_dataloader, 'batch_size')
-            batch_size = 512
+            batch_size = 8192
             print("Batch size: " + str(batch_size))
         except AttributeError as e:
             # Error message when `device_train_microbatch_size` is None
