@@ -287,7 +287,7 @@ def _get_initial_device_train_microbatch_size(
             return None
         try:
             batch_size = getattr(train_dataloader, 'batch_size')
-            print("Batch size: " + str(batch_size))
+            log.infos("Batch size: " + str(batch_size))
         except AttributeError as e:
             # Error message when `device_train_microbatch_size` is None
             # Note: This code path will be removed after `auto` is made default
@@ -2754,7 +2754,7 @@ class Trainer:
             # Reset train_metrics on every batch
             # Placing reset here ensures that if auto grad accum catches an OOM, incomplete metric state is cleared
 
-            print("Iteration " + str(i) +": " + str(self.state.device_train_microbatch_size))
+            log.info("Iteration " + str(i) +": " + str(self.state.device_train_microbatch_size))
             i+=1
 
             if self.state.train_metrics is not None:  # pyright: ignore[reportUnnecessaryComparison]
