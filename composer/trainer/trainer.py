@@ -2968,18 +2968,22 @@ class Trainer:
             # happen when close to memory limit or with uneven memory usage across ranks
             if self.state.auto_microbatching:
                 # Check if any other rank hit an OOM
+                print("blocking for OOM")
                 found_cuda_oom_tensor = self.state.device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
                 dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
                 found_cuda_oom = found_cuda_oom_tensor.item()
                 # Signal current rank is still in batch
+                print("blocking for finish")
                 all_ranks_finished_tensor = self.state.device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
                 dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
 
+                print("exiting block")
                 if found_cuda_oom == 1:
                     raise RuntimeError('CUDA out of memory encountered on a different rank')
 
             # Loss
             self.engine.run_event(Event.BEFORE_LOSS)
+            print("Before loss")
 
             with _get_precision_context(
                 self.state.precision,
@@ -2990,22 +2994,28 @@ class Trainer:
 
             assert self.state.loss is not None
             self.engine.run_event(Event.AFTER_LOSS)
+            print("After loss")
 
             # Backward Pass
             self.engine.run_event(Event.BEFORE_BACKWARD)
+            print("Before backward")
 
             microbatch_loss_dict = {}
             # If total loss key is present, copy loss
             if isinstance(self.state.loss, dict) and ('total' in self.state.loss):
+                print("microbatch_loss = self.state.loss['total'] ")
                 microbatch_loss = self.state.loss['total']  # type: ignore
                 microbatch_loss_dict = self.state.loss.copy()
+                print("microbatch_loss")
             # If total loss key is not present, sum individual losses
             else:
                 microbatch_loss = self.state.device.tensor_to_device(torch.zeros(size=(1,)))
+                print("microbatch_loss = self.state.device.tensor_to_device(torch.zeros(size=(1,))) ")
                 for loss in ensure_tuple(self.state.loss):
                     assert isinstance(loss, torch.Tensor)
                     microbatch_loss.add_(loss.mean())
 
+                print(microbatch_loss)
                 # Copy the loss if it is a dictionary
                 if isinstance(self.state.loss, dict):
                     microbatch_loss_dict = self.state.loss.copy()
@@ -3015,28 +3025,44 @@ class Trainer:
 
                 # Include total loss
                 microbatch_loss_dict['total'] = microbatch_loss
-
+            print("mid")
             # For each loss to log: detach, clone, mean, then multiply by (microbatch size) / (batch size)
             for k, loss in microbatch_loss_dict.items():
                 microbatch_loss_dict[k] = loss.detach().clone().mean() * (microbatch_size / current_batch_size)
 
+            print("a")
             if use_grad_scaling:
+                print("b")
                 microbatch_loss = cast(torch.Tensor, self.state.scaler.scale(microbatch_loss))  # type: ignore
 
+            
             if self.state.deepspeed_enabled:
+                print("c")
                 self.state.deepspeed_model.backward(microbatch_loss)
+                print("d")
             else:
+                print("e")
                 # Scale loss based on the number of samples in the microbatch to maintain gradient numerics
+                print(microbatch_size / current_batch_size)
                 microbatch_loss.mul_(microbatch_size / current_batch_size)
+                print("mul successful")
+                for i in range(8):
+                    print(i)
+                    print(torch.cuda.memory_summary(device=i))
                 microbatch_loss.backward(create_graph=self._backwards_create_graph)
-
+                for i in range(8):
+                    print(i)
+                    print(torch.cuda.memory_summary(device=i))
+                print("f")
             if self.state.device.dist_backend == 'xla':
+                print("g")
                 # For xla devices, the program between any pair of mark_steps() calls is compiled. With out this, the
                 # microbatching loop is unrolled, drastically increasing compile time.
                 xm.mark_step()
+                print("h")
 
             self.engine.run_event(Event.AFTER_BACKWARD)
-
+            print("After backward")
             # Use microbatch outputs to update training metrics
             if (
                 self.state.train_metrics is not None and  # pyright: ignore[reportUnnecessaryComparison]
@@ -3047,8 +3073,9 @@ class Trainer:
 
         if self.state.deepspeed_enabled:
             self.state.deepspeed_model.step()
-
+        print("exit train microbatch")
         return microbatch_loss_dict
+
 
     def _increment_iteration(self):
         self.state.previous_timestamp = self.state.timestamp
