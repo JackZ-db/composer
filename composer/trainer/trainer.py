@@ -2735,8 +2735,12 @@ class Trainer:
         # Any in-place changes to a microbatch will be reflected in the device batch.
         device_batch = self.state.batch
 
+        i= 0
         # Retry until we successfully complete training and return loss
         while True:
+
+            log.info("Iteration " + str(i) +": " + str(self.state.device_train_microbatch_size))
+            i += 1
             # Reset train_metrics on every batch
             # Placing reset here ensures that if auto grad accum catches an OOM, incomplete metric state is cleared
             if self.state.train_metrics is not None:  # pyright: ignore[reportUnnecessaryComparison]
@@ -3046,13 +3050,11 @@ class Trainer:
                 print(microbatch_size / current_batch_size)
                 microbatch_loss.mul_(microbatch_size / current_batch_size)
                 print("mul successful")
-                for i in range(8):
-                    print(i)
-                    print(torch.cuda.memory_summary(device=i))
+                
+                print(torch.cuda.memory_summary(device=0))
                 microbatch_loss.backward(create_graph=self._backwards_create_graph)
-                for i in range(8):
-                    print(i)
-                    print(torch.cuda.memory_summary(device=i))
+                print("backward successful")
+                print(torch.cuda.memory_summary(device=0))
                 print("f")
             if self.state.device.dist_backend == 'xla':
                 print("g")
