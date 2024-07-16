@@ -2742,7 +2742,10 @@ class Trainer:
         # Any in-place changes to a microbatch will be reflected in the device batch.
         device_batch = self.state.batch
 
-        i= 0
+        i= 1
+
+        torch.cuda.memory._record_memory_history()
+        
         # Retry until we successfully complete training and return loss
         while True:
             self.iteration = i
