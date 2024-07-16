@@ -3028,7 +3028,13 @@ class Trainer:
             else:
                 # Scale loss based on the number of samples in the microbatch to maintain gradient numerics
                 microbatch_loss.mul_(microbatch_size / current_batch_size)
+                print("mul successful")
+
+                print(torch.cuda.memory_summary(device=0))
+
                 microbatch_loss.backward(create_graph=self._backwards_create_graph)
+                print("backward successful")
+                print(torch.cuda.memory_summary(device=0))
 
             if self.state.device.dist_backend == 'xla':
                 # For xla devices, the program between any pair of mark_steps() calls is compiled. With out this, the
