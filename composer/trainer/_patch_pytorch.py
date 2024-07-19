@@ -70,7 +70,8 @@ import torch
 from torch.distributed.fsdp._runtime_utils import (
     _post_backward_reshard,
     _reduce_grad,
-    _reduce_grad_no_shard
+    _reduce_grad_no_shard,
+    _low_precision_hook_enabled
 )
 from torch.distributed.fsdp._common_utils import (
     _assert_in_training_states,
