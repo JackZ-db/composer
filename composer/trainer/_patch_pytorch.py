@@ -236,6 +236,7 @@ def _post_backward_hook(
     print("in _post_backward")
     _log_post_backward_hook(state, handle, log)
     flat_param = handle.flat_param
+    print("passed flat_param")
     flat_param._post_backward_called = True
     with torch.autograd.profiler.record_function(
         "FullyShardedDataParallel._post_backward_hook"
@@ -257,7 +258,9 @@ def _post_backward_hook(
         if flat_param.grad.requires_grad:
             raise RuntimeError("FSDP does not support gradients of gradients")
 
+        print("before _post_backward_reshard")
         _post_backward_reshard(state, handle)
+        print("after _post_backward_reshard")
         if not state._sync_gradients:
             if handle._use_orig_params:
                 handle._use_unsharded_grad_views()
