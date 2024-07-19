@@ -48,6 +48,7 @@ from torch.distributed.fsdp._common_utils import (
     _no_dispatch_record_stream,
     clean_tensor_name,
     TrainingState,
+    _no_dispatch_record_stream,
 )
 from torch.distributed.fsdp._flat_param import (
     FlatParameter,
@@ -66,20 +67,18 @@ from torch.distributed.utils import (
 )
 
 import torch
-from torch.distributed.fsdp import _runtime_utils
+from torch.distributed.fsdp._runtime_utils import (
+    _post_backward_reshard,
+    _reduce_grad,
+    _reduce_grad_no_shard
+)
 from torch.distributed.fsdp._common_utils import (
     _assert_in_training_states,
     _FSDPState,
     _log_post_backward_hook,
     _no_dispatch_record_stream,
 )
-from torch.distributed.fsdp._flat_param import (
-    FlatParamHandle,
-    HandleTrainingState,
-)
-from torch.autograd.profiler import record_function
 
-from torch.utils import _pytree as pytree
 
 log = logging.getLogger(__name__)
 
