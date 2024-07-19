@@ -253,6 +253,7 @@ def prepare_fsdp_module(
             #print("done syncing sync hook " + str(sync_hook_counter))
         
         if found_cuda_oom == 1:
+            print("broke")
             raise RuntimeError('CUDA out of memory encountered on a different rank')
 
     # Necessary variables for optimizers with multiple param groups in FSDP
