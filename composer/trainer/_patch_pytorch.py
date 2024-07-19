@@ -31,6 +31,9 @@ from torch.distributed.fsdp import FullyShardedDataParallel, ShardingStrategy
 from torch.distributed.fsdp._fsdp_extensions import _ext_pre_load_state_dict_transform
 from torch.distributed.utils import _replace_by_prefix
 
+from torch.distributed.fsdp._common_utils import _FSDPState
+from torch.distributed.fsdp import FlatParamHandle
+
 log = logging.getLogger(__name__)
 
 
