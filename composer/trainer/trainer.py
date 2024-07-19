@@ -135,6 +135,7 @@ from composer.utils import (
 )
 
 from composer.utils import format_name_with_dist_and_time
+from torch.
 
 if is_xla_installed():
     import torch_xla.core.xla_model as xm
@@ -2809,16 +2810,13 @@ class Trainer:
                     found_cuda_oom_tensor = self.state.device.tensor_to_device(
                         torch.tensor([found_cuda_oom], dtype=torch.uint8),
                     )
-                    print("waiting for OOM in train_batch")
                     dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
                     found_cuda_oom = found_cuda_oom_tensor.item()
                     # Check if any rank is still not done with the batch. This may happen if only a
                     # subset of ranks OOM, leaving some batches still in the forward pass
                     all_ranks_finished_tensor = self.state.device.tensor_to_device(torch.tensor([1], dtype=torch.uint8))
-                    print("waiting for finish in train_batch")
                     dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
                     all_ranks_finished = all_ranks_finished_tensor.item() == 1
-                    print("done syncing in train_batch")
                 if found_cuda_oom == 1:
                     last_oom_microbatch_size = self.state.device_train_microbatch_size
                     if num_search_steps == 0:
@@ -3125,6 +3123,7 @@ class Trainer:
             if self.state.deepspeed_enabled:
                 self.state.deepspeed_model.backward(microbatch_loss)
             else:
+                """
                 remote_file_name = self.state.run_name + "/torch_memory_traces"
                 folder = self.state.run_name + "/torch_traces"
                 folder_name = format_name_with_dist(folder, self.state.run_name)
@@ -3145,21 +3144,20 @@ class Trainer:
                 # Scale loss based on the number of samples in the microbatch to maintain gradient numerics
                 microbatch_loss.mul_(microbatch_size / current_batch_size)
 
-                print("mul success")
                 snapshot_before = torch.cuda.memory._snapshot()
                 with open(filename_before, 'w+') as fd:
                     fd.write(torch.cuda._memory_viz.trace_plot(snapshot_before))  # type: ignore
                 remote_file_name = os.path.join(remote_path_in_bucket, os.path.basename(filename_before)).lstrip('/')
                 self.logger.upload_file(remote_file_name=remote_file_name, file_path=filename_before, overwrite=False)
 
-                microbatch_loss.backward(create_graph=self._backwards_create_graph)
-                print("backward success")
+                
                 snapshot_after = torch.cuda.memory._snapshot()
                 with open(filename_after, 'w+') as fd:
                     fd.write(torch.cuda._memory_viz.trace_plot(snapshot_after))  # type: ignore
                 remote_file_name = os.path.join(remote_path_in_bucket, os.path.basename(filename_after)).lstrip('/')
                 self.logger.upload_file(remote_file_name=remote_file_name, file_path=filename_after, overwrite=False)
-
+                """
+                microbatch_loss.backward(create_graph=self._backwards_create_graph)
 
             
             if self.state.device.dist_backend == 'xla':
