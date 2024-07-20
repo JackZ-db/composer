@@ -287,7 +287,8 @@ def _get_initial_device_train_microbatch_size(
     if auto_microbatching:
         if train_dataloader is None:
             return None
-        return 1
+        #return 1
+        return getattr(train_dataloader, 'batch_size')
     elif device_train_microbatch_size is None:
         # Return None, this function will be called again when `train_dataloader` is set
         if train_dataloader is None:
