@@ -135,7 +135,7 @@ from composer.utils import (
 )
 
 from composer.utils import format_name_with_dist_and_time
-from torch.
+
 
 if is_xla_installed():
     import torch_xla.core.xla_model as xm
