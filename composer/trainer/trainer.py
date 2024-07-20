@@ -2828,6 +2828,7 @@ class Trainer:
                 if found_cuda_oom == 1: 
                     # Manually clean up state and reshard if an OOM prevents a batch from finishing
                     _clear_incomplete_train_states(self.state)
+                    self.auto_microbatch_size_found = False
 
                     if self.state.device_train_microbatch_size == 1:
                         raise RuntimeError((
@@ -2881,6 +2882,7 @@ class Trainer:
                         
                         if self.state.device_train_microbatch_size != batch_size:
                             if num_search_steps == 0:
+                                highest_non_oom_microbatch_size = self.state.device_train_microbatch_size
                                 _double_device_train_microbatch_size(self.state)
                                 _clear_incomplete_train_states(self.state)
                                 continue
