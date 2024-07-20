@@ -2869,37 +2869,31 @@ class Trainer:
                         # Skip return and continue searching for the highest non-OOM size in this narrower range
                         continue
                 else:
-                    if self.auto_microbatch_size_found: # microbatch size found in previous search
-                        break
-
-                    assert self.state.train_dataloader is not None
-                    try:
-                        batch_size = getattr(self.state.train_dataloader, 'batch_size')
-                    except AttributeError as e:
-                        # Error message when `device_train_microbatch_size` is 'auto'
-                        raise AttributeError(
-                            "`device_train_microbatch_size='auto'` requires the `state.train_dataloader` to have a `batch_size` attribute.",
-                        ) from e
-                    
-                    if self.state.device_train_microbatch_size == batch_size:
-                        break
-
-                    if num_search_steps == 0:
-                        _double_device_train_microbatch_size(self.state)
-                        _clear_incomplete_train_states(self.state)
-                        continue
-                    elif num_search_steps < max_search_steps: # Previous OOMs found in this training step 
-                        highest_non_oom_microbatch_size = self.state.device_train_microbatch_size
-                        median_microbatch_size = int((highest_non_oom_microbatch_size + lowest_oom_microbatch_size) // 2)
-                        self.state.device_train_microbatch_size = median_microbatch_size
+                    if not self.auto_microbatch_size_found: # microbatch size found in previous search
+                        assert self.state.train_dataloader is not None
+                        try:
+                            batch_size = getattr(self.state.train_dataloader, 'batch_size')
+                        except AttributeError as e:
+                            # Error message when `device_train_microbatch_size` is 'auto'
+                            raise AttributeError(
+                                "`device_train_microbatch_size='auto'` requires the `state.train_dataloader` to have a `batch_size` attribute.",
+                            ) from e
                         
-                        num_search_steps += 1
-                        _clear_incomplete_train_states(self.state)
-                        continue
-                    else: # reached max search steps and found a non-OOM microbatch size
-                        break
-                    
-            
+                        if self.state.device_train_microbatch_size != batch_size:
+                            if num_search_steps == 0:
+                                _double_device_train_microbatch_size(self.state)
+                                _clear_incomplete_train_states(self.state)
+                                continue
+                            elif num_search_steps < max_search_steps: # Previous OOMs found in this training step 
+                                highest_non_oom_microbatch_size = self.state.device_train_microbatch_size
+                                median_microbatch_size = int((highest_non_oom_microbatch_size + lowest_oom_microbatch_size) // 2)
+                                self.state.device_train_microbatch_size = median_microbatch_size
+                                
+                                num_search_steps += 1
+                                _clear_incomplete_train_states(self.state)
+                                continue
+                            # else: reached max search steps and found a non-OOM microbatch size
+                            
             # Log microbatch and return loss if we've completed without OOMing.
             assert self.state.device_train_microbatch_size is not None
             if original_microbatch_size != self.state.device_train_microbatch_size:
