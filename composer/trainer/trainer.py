@@ -362,12 +362,6 @@ def _double_device_train_microbatch_size(state: State):
     
     original_microbatch_size = state.device_train_microbatch_size
     state.device_train_microbatch_size = min(int(original_microbatch_size * 2), batch_size)
-    warnings.warn(
-        RuntimeWarning(
-            'CUDA out of memory detected. Train microbatch size will be decreased from '
-            f'{original_microbatch_size} -> {state.device_train_microbatch_size}.',
-        ),
-    )
     
 def closest_lower_power_of_2(n: int):
     if n <= 1:
@@ -1119,6 +1113,8 @@ class Trainer:
         self.batch_number = 1
         self.microbatch_number =1 
         self.iteration = 1
+
+        self.auto_microbatch_size_found = False
 
         self.auto_log_hparams = auto_log_hparams
         self.python_log_level = python_log_level
@@ -2873,6 +2869,9 @@ class Trainer:
                         # Skip return and continue searching for the highest non-OOM size in this narrower range
                         continue
                 else:
+                    if self.auto_microbatch_size_found: # microbatch size found in previous search
+                        break
+
                     assert self.state.train_dataloader is not None
                     try:
                         batch_size = getattr(self.state.train_dataloader, 'batch_size')
@@ -2910,6 +2909,7 @@ class Trainer:
                         f'{original_microbatch_size} -> {self.state.device_train_microbatch_size}.',
                         ),
                 )
+                self.auto_microbatch_size_found = True
             self.logger.log_metrics({'trainer/device_train_microbatch_size': self.state.device_train_microbatch_size})
             self.first_batch_complete = True
             self.batch_number += 1
