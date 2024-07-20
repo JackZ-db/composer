@@ -298,6 +298,7 @@ def _post_backward_hook(
             _no_dispatch_record_stream(
                 autograd_computed_grad, state._post_backward_stream
             )
+            print("exit post_backward_hook")
 
 @no_type_check
 def _unshard(
