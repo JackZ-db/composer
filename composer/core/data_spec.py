@@ -243,6 +243,7 @@ class DataSpec:
         return batch
 
     def _default_get_num_samples_in_batch(self, batch: Batch) -> int:
+        print(f"Actual datatype of batch: {type(batch)}")
         if isinstance(batch, torch.Tensor):
             return batch.shape[0]
 
@@ -285,6 +286,7 @@ class DataSpec:
             )
 
     def _default_get_num_tokens_in_batch(self, batch: Batch) -> int:
+        print(f"Actual datatype of batch: {type(batch)}")
         # First try HuggingFace-style input dicts
         if isinstance(batch, Mapping) and 'input_ids' in batch:
             samples_per_batch = batch['input_ids'].shape[0]
