@@ -18,7 +18,6 @@ from dataclasses import asdict
 from itertools import chain
 from typing import Any, Callable, Dict, Iterable, List, Generator, Optional, Set, Tuple, Union, cast, no_type_check
 
-
 import torch
 import torch.distributed._shard.sharded_tensor.metadata as sharded_tensor_meta
 from torch.distributed._shard.sharding_spec import ChunkShardingSpec
@@ -241,6 +240,20 @@ def unshard(self):
         self._use_unsharded_flat_param(unsharded_flat_param)
         return
     unsharded_flat_param = self._alloc_padded_unsharded_flat_param()
+    #putting this out here for monkepatch
+    # Check if any other rank hit an OOM
+    found_cuda_oom_tensor = torch.tensor([0], dtype=torch.uint8).to(self.device, non_blocking=True)
+
+    dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
+    found_cuda_oom = found_cuda_oom_tensor.item()
+    # Signal current rank is still in batch
+    all_ranks_finished_tensor = torch.tensor([0], dtype=torch.uint8).to(self.device, non_blocking=True)
+    
+    dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
+    
+    if found_cuda_oom == 1:
+        print("broke in monkey")
+        raise RuntimeError('CUDA out of memory encountered on a different rank')
     padded_unsharded_flat_param = self._all_gather_flat_param(unsharded_flat_param)
     self._use_unsharded_flat_param(padded_unsharded_flat_param)
 
