@@ -90,6 +90,9 @@ def patch_pytorch():
     _runtime_utils._post_backward_hook = (_post_backward_hook)
     _runtime_utils._unshard = (_unshard)
 
+    
+    FlatParamHandle.unshard = (unshard)
+
     """Monkey patches pytorch functions based on pytorch version."""
     if version.parse(torch.__version__) < version.parse('2.1.1'):
         # Monkey patch for torch < 2.1.1 ie torch == 2.1.0
@@ -213,6 +216,33 @@ def build_metadata(
         shards_metadata.append(shard_metadata)
 
     return sharded_tensor_meta.ShardedTensorMetadata(shards_metadata, tensor_sizes, tensor_properties)
+
+@no_type_check
+def unshard(self):
+    """
+    Run the unshard logic.
+
+    This includes all-gathering the flat parameter
+    and switching to using the unsharded flat parameter. If the handle does
+    not need unsharding, then this only switches to using the unsharded
+    flat parameter. For ``NO_SHARD``, this is a no-op.
+
+    If FSDP is in :meth:`summon_full_params` and the handle uses parameter
+    mixed precision, then the parameter is forced to full precision.
+    """
+    if not self.needs_unshard():
+        # Even when not needing an unshard, we should switch to using
+        # the unsharded flat parameter
+        unsharded_flat_param = (
+            self._get_padded_unsharded_flat_param()
+            if self.uses_sharded_strategy
+            else self.flat_param
+        )
+        self._use_unsharded_flat_param(unsharded_flat_param)
+        return
+    unsharded_flat_param = self._alloc_padded_unsharded_flat_param()
+    padded_unsharded_flat_param = self._all_gather_flat_param(unsharded_flat_param)
+    self._use_unsharded_flat_param(padded_unsharded_flat_param)
 
 @no_type_check
 @torch.no_grad()
