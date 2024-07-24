@@ -2754,7 +2754,7 @@ class Trainer:
         original_microbatch_size = self.state.device_train_microbatch_size
         baseline_microbatch_size = self.state.device_train_microbatch_size
 
-        retrying_for_thrashing = False
+        retrying_from_thrashing = False
 
         # Retry until we successfully complete training and return loss
         i = 1
@@ -2833,7 +2833,10 @@ class Trainer:
                     dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
                     all_ranks_finished = all_ranks_finished_tensor.item() == 1
                 
-                if self.auto_microbatch_size_found or retrying_for_thrashing:
+                #if self.auto_microbatch_size_found or retrying_for_thrashing:
+
+                thrashing = False
+                if self.auto_microbatch_size_found and not retrying_from_thrashing:
                     # Check for thrashing between batches or once we think we've found an optimal non-OOM microbatch size
                     if torch.cuda.is_available():
                         stats = torch.cuda.memory_stats()
@@ -2851,9 +2854,6 @@ class Trainer:
                         )
                     dist.all_reduce(thrashing_tensor, reduce_operation='MAX')
                     thrashing = thrashing_tensor.item() == 1
-                    found_cuda_oom = thrashing or found_cuda_oom
-                    if found_cuda_oom:
-                        retrying_for_thrashing = False
 
                 if found_cuda_oom == 1: 
                     # Manually clean up state and reshard if an OOM prevents a batch from finishing
@@ -2865,7 +2865,7 @@ class Trainer:
                             'CUDA out of memory. The train loop failed with an internal microbatch of size 1.'
                             'The GPU does not have enough memory to process even 1 sample during train.'
                         ))
-                    
+
                     # Find closest lower power of 2 if previously non-OOM microbatch size is OOMing
                     if self.state.device_train_microbatch_size == baseline_microbatch_size: 
                         lowest_oom_microbatch_size = self.state.device_train_microbatch_size
@@ -2905,6 +2905,14 @@ class Trainer:
                         # Skip return and continue searching for the highest non-OOM size in this narrower range
                         continue
                 else:
+                    if thrashing:
+                        retrying_from_thrashing = True
+                        lowest_oom_microbatch_size = self.state.device_train_microbatch_size
+                        baseline_microbatch_size = closest_lower_power_of_2(self.state.device_train_microbatch_size)
+                        highest_non_oom_microbatch_size = baseline_microbatch_size
+                        self.state.device_train_microbatch_size = baseline_microbatch_size
+                        continue
+
                     if not self.auto_microbatch_size_found: # microbatch size found in previous search
                         assert self.state.train_dataloader is not None
                         try:
@@ -2930,15 +2938,15 @@ class Trainer:
                                 _clear_incomplete_train_states(self.state)
                                 continue
                             # else: reached max search steps and found a non-OOM microbatch size
-                if self.auto_microbatch_size_found == False and retrying_for_thrashing == False: 
+                #if self.auto_microbatch_size_found == False and retrying_for_thrashing == False: 
                     #rerun to search for thrashing
-                    if torch.cuda.is_available():
-                        memory_stats = torch.cuda.memory_stats()
-                        self.alloc_retries = memory_stats["num_alloc_retries"]
-                        retrying_for_thrashing = True
-                        _clear_incomplete_train_states(self.state)
-                        print("retrying for thrash")
-                        continue
+                    #if torch.cuda.is_available():
+                        #memory_stats = torch.cuda.memory_stats()
+                       # self.alloc_retries = memory_stats["num_alloc_retries"]
+                        #retrying_for_thrashing = True
+                        #_clear_incomplete_train_states(self.state)
+                        #print("retrying for thrash")
+                        #continue
 
             # Log microbatch and return loss if we've completed without OOMing.
             assert self.state.device_train_microbatch_size is not None
@@ -2950,6 +2958,9 @@ class Trainer:
                         ),
                 )
             self.auto_microbatch_size_found = True
+            if torch.cuda.is_available():
+                memory_stats = torch.cuda.memory_stats()
+                self.alloc_retries = memory_stats["num_alloc_retries"]
             self.logger.log_metrics({'trainer/device_train_microbatch_size': self.state.device_train_microbatch_size})
             self.first_batch_complete = True
             self.batch_number += 1
