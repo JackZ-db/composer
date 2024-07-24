@@ -2895,11 +2895,16 @@ class Trainer:
                         # Skip return and rerun to obtain loss - committing to this dtms unless retrying it OOMs
                         continue
                     else: # Only end up here if a previously non-OOM microbatch size is no longer successful in the same training step, and it's not the original microbatch size
-                        lowest_oom_microbatch_size = self.state.device_train_microbatch_size
-                        self.state.device_train_microbatch_size = baseline_microbatch_size
-                        highest_non_oom_microbatch_size = baseline_microbatch_size
+                        #lowest_oom_microbatch_size = self.state.device_train_microbatch_size
+                        #self.state.device_train_microbatch_size = highest_non_oom_microbatch_size
+                        #highest_non_oom_microbatch_size = baseline_microbatch_size
                         
-                        num_search_steps = 1
+                        #num_search_steps = 1
+
+                        lowest_oom_microbatch_size = self.state.device_train_microbatch_size
+                        highest_non_oom_microbatch_size = baseline_microbatch_size
+                        self.state.device_train_microbatch_size = int((lowest_oom_microbatch_size + highest_non_oom_microbatch_size) // 2)
+
                         # Skip return and continue searching for the highest non-OOM size in this narrower range
                         continue
                 else:
