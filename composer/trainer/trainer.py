@@ -281,6 +281,7 @@ def _get_initial_device_train_microbatch_size(
     `train_dataloader` is not set yet, returns None and this function will be called again when
     `train_dataloader` is set, such as when `fit()` is called.
     """
+    return 8
     if device_train_microbatch_size is None or auto_microbatching:
         # Return None, this function will be called again when `train_dataloader` is set
         if train_dataloader is None:
