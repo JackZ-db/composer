@@ -160,7 +160,7 @@ class TestTrainerInit():
                 compile_config=None,
             )
             assert '`model` is already compiled with `torch.compile`' in caplog.text
-            
+
     @pytest.mark.gpu
     def test_memory_usage_with_diff_batch_sizes(self, model: ComposerModel):
 
@@ -195,11 +195,12 @@ class TestTrainerInit():
             return mini_memory_monitor.batch_memory_usages[-1]
 
         memory_across_diff_batch_sizes = []
-        for global_batch_size in [8, 32]:
+        for global_batch_size in [8, 4096]:
             memory_across_diff_batch_sizes.append(train_and_track_memory(global_batch_size))
-            assert (max(memory_across_diff_batch_sizes) - min(memory_across_diff_batch_sizes) < 0.1), (
+            assert (max(memory_across_diff_batch_sizes) - min(memory_across_diff_batch_sizes) < 0.0000001), (
                 f'Memory usage varied by more than 0.1GB across different global batch sizes with same microbatch size. '
             )
+            print(max(memory_across_diff_batch_sizes) - min(memory_across_diff_batch_sizes))
 
 
     def test_eval_metrics(self):
