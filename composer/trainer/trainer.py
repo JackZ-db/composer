@@ -2765,7 +2765,7 @@ class Trainer:
             # Reset train_metrics on every batch
             # Placing reset here ensures that if auto grad accum catches an OOM, incomplete metric state is cleared
             self.iteration = i
-            log.info("Iteration " + str(i) +": " + str(self.state.device_train_microbatch_size))
+            log.info("Iteration " + str(i) +": " + str(self.state.device_train_microbatch_size) + " Num Search Steps: " + str(num_search_steps))
             i+=1
 
             if self.state.train_metrics is not None:  # pyright: ignore[reportUnnecessaryComparison]
@@ -2802,7 +2802,10 @@ class Trainer:
                             else:
                                 optimizer.step()
             except RuntimeError as e:
-                if self.state.auto_microbatching and _is_cuda_oom(e):
+                if self.state.auto_microbatching and str(e) == 'CUDA out of memory encountered on a different rank':
+                    log.debug((f"A Different Rank OOM'd."))
+                    found_cuda_oom = 1
+                elif self.state.auto_microbatching and _is_cuda_oom(e):
                     log.debug((f"Rank {dist.get_global_rank()} OOM'd."))
                     found_cuda_oom = 1
                 elif self.state.auto_microbatching and ('cuda' in str(e).lower() or 'c10' in str(e).lower()):
@@ -2838,6 +2841,7 @@ class Trainer:
                     
                     if cur_num_alloc_retries - self.alloc_retries > 0:
                         thrashing = 1
+                        print("Found thrashing: " +  str(self.alloc_retries) + " to " + str(cur_num_alloc_retries))
                     else:
                         thrashing = 0
 
@@ -2929,6 +2933,7 @@ class Trainer:
                         self.alloc_retries = memory_stats["num_alloc_retries"]
                         retrying_for_thrashing = True
                         _clear_incomplete_train_states(self.state)
+                        print("retrying for thrash")
                         continue
 
             # Log microbatch and return loss if we've completed without OOMing.
