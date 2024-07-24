@@ -116,6 +116,7 @@ def test_algorithm_resumption(
                 file1=os.path.join(folder1, 'ep1-rank0'),
                 file2=os.path.join(folder1, 'ep2-rank0'),
             )
+    assert False
 
 
 def _assert_checkpoints_equal(file1, file2):
