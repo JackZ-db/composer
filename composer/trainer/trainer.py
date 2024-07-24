@@ -2883,6 +2883,14 @@ class Trainer:
                         self.state.device_train_microbatch_size = median_microbatch_size
 
                         num_search_steps += 1
+
+                        #optimization so we don't spam convergence
+                        if lowest_oom_microbatch_size == highest_non_oom_microbatch_size:
+                            num_search_steps = max_search_steps + 1 # go to else protocol
+                            lowest_oom_microbatch_size = self.state.device_train_microbatch_size
+                            highest_non_oom_microbatch_size = baseline_microbatch_size
+                            self.state.device_train_microbatch_size = int((lowest_oom_microbatch_size + highest_non_oom_microbatch_size) // 2)
+
                         # Skip return and decrease dtms, continuing the search for the highest non-OOM size
                         continue
                     elif num_search_steps == max_search_steps: # Stop searching, choose most recently successful size
@@ -2935,18 +2943,14 @@ class Trainer:
                                 self.state.device_train_microbatch_size = median_microbatch_size
                                 
                                 num_search_steps += 1
+
+                                #optimization so we don't spam convergence
+                                if median_microbatch_size == highest_non_oom_microbatch_size:
+                                    num_search_steps = max_search_steps
+
                                 _clear_incomplete_train_states(self.state)
                                 continue
                             # else: reached max search steps and found a non-OOM microbatch size
-                #if self.auto_microbatch_size_found == False and retrying_for_thrashing == False: 
-                    #rerun to search for thrashing
-                    #if torch.cuda.is_available():
-                        #memory_stats = torch.cuda.memory_stats()
-                       # self.alloc_retries = memory_stats["num_alloc_retries"]
-                        #retrying_for_thrashing = True
-                        #_clear_incomplete_train_states(self.state)
-                        #print("retrying for thrash")
-                        #continue
 
             # Log microbatch and return loss if we've completed without OOMing.
             assert self.state.device_train_microbatch_size is not None
