@@ -136,6 +136,11 @@ class MemoryMonitor(Callback):
         if model_device.type not in ('cuda', 'meta'):
             warnings.warn(f'The memory monitor only works on CUDA devices, but the model is on {model_device.type}.')
 
+    def before_train_batch(self, state: State, logger: Logger):
+        if next(state.model.parameters()).device.type == 'cuda':
+            # Reset peak memory stats at the start of each batch
+            torch.cuda.reset_peak_memory_stats()
+            
     def after_train_batch(self, state: State, logger: Logger):
         memory_report = {}
 
