@@ -2854,7 +2854,9 @@ class Trainer:
                     found_cuda_oom = thrashing or found_cuda_oom
                     if found_cuda_oom:
                         retrying_for_thrashing = False
-
+                    if thrashing:
+                        highest_non_oom_microbatch_size = baseline_microbatch_size
+                        num_search_steps = 1
 
                 if found_cuda_oom == 1: 
                     # Manually clean up state and reshard if an OOM prevents a batch from finishing
