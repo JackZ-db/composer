@@ -160,6 +160,47 @@ class TestTrainerInit():
                 compile_config=None,
             )
             assert '`model` is already compiled with `torch.compile`' in caplog.text
+            
+    @pytest.mark.gpu
+    def test_memory_usage_with_diff_batch_sizes(self, model: ComposerModel):
+
+        def train_and_track_memory(global_batch_size):
+
+            class MiniMemoryMonitor(Callback):
+
+                def __init__(self):
+                    self.batch_memory_usages = []
+
+                def after_train_batch(self, state: State, logger: Logger):
+                    current_alloc_memory = torch.cuda.max_memory_allocated() // (2**30)  # Convert to GB
+                    self.batch_memory_usages.append(current_alloc_memory)
+                    torch.cuda.reset_peak_memory_stats()
+
+            microbatch_size = 1
+            input_shape = (100000,)
+            dataset = RandomClassificationDataset(shape=input_shape, size=1024)
+            train_dataloader = DataLoader(dataset, batch_size=global_batch_size)
+            mini_memory_monitor = MiniMemoryMonitor()
+
+            trainer = Trainer(
+                model=model,
+                train_dataloader=train_dataloader,
+                max_duration='2ba',
+                device='gpu',
+                device_train_microbatch_size=microbatch_size,
+                callbacks=[mini_memory_monitor],
+            )
+
+            trainer.fit()
+            return mini_memory_monitor.batch_memory_usages[-1]
+
+        memory_across_diff_batch_sizes = []
+        for global_batch_size in [8, 32]:
+            memory_across_diff_batch_sizes.append(train_and_track_memory(global_batch_size))
+            assert (max(memory_across_diff_batch_sizes) - min(memory_across_diff_batch_sizes) < 0.1), (
+                f'Memory usage varied by more than 0.1GB across different global batch sizes with same microbatch size. '
+            )
+
 
     def test_eval_metrics(self):
         model = SimpleModel()
@@ -213,6 +254,7 @@ def _assert_optimizer_is_on_device(optimizer: torch.optim.Optimizer):
         for v in state.values():
             if isinstance(v, torch.Tensor):
                 assert v.device.type == 'cuda'
+
 
 
 def _get_classification_dataloader():
