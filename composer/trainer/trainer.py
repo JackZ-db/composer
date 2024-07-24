@@ -2532,6 +2532,7 @@ class Trainer:
                 rank_num_samples = self._train_data_spec.get_num_samples_in_batch(self.state.batch)
                 rank_num_tokens = self._train_data_spec.get_num_tokens_in_batch(self.state.batch)
 
+                return
                 if self.state.deepspeed_enabled:
                     self.state.batch = fix_batch_precision_for_deepspeed(self.state.batch, self.state.precision)
 
