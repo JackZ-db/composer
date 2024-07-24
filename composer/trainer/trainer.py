@@ -2525,7 +2525,7 @@ class Trainer:
                 
                 log.info(self.state.batch)
                 log.info(type(self.state.batch))
-                self.state.batch = self.state.device.decode_batch_to_dict(self.state.batch)
+                #self.state.batch = self.state.device.decode_batch_to_dict(self.state.batch)
                 log.info(self.state.batch)
                 log.info(type(self.state.batch))
                 self.state.batch = self._train_data_spec.device_transforms(self.state.batch)
