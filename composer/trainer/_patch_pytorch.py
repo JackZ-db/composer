@@ -87,6 +87,7 @@ def patch_pytorch():
     from torch.distributed.fsdp import _runtime_utils
     _runtime_utils._post_backward_hook = (_post_backward_hook)
     #_runtime_utils._unshard = (_unshard)
+    _runtime_utils._reshard = (_reshard)
 
     
     FlatParamHandle.unshard = (unshard)
@@ -412,6 +413,35 @@ def _post_backward_hook(
                 autograd_computed_grad, state._post_backward_stream
             )
             print("exit post_backward_hook")
+
+@no_type_check
+def _reshard(
+    state: _FSDPState,
+    handle: FlatParamHandle,
+    free_unsharded_flat_param: bool,
+):
+    """
+    Reshards the handle. ``free_unsharded_flat_param`` indicates whether to
+    free the handle's padded unsharded flat parameter.
+    """
+    print("before handle reshard")
+    handle.reshard(free_unsharded_flat_param)
+    print("after handle reshard")
+    if state.limit_all_gathers and free_unsharded_flat_param:
+        if not torch.distributed._functional_collectives.is_torchdynamo_compiling():
+            # We don't run a even queue for freeing under torch compile atm
+            # But maybe we need to? TODO(voz): Look into this
+            free_event = state._device_handle.Event()
+            free_event.record()
+            print("before free event")
+            state._free_event_queue.enqueue(free_event)
+            print("after free event")
+    print("before post reshard")
+    handle.post_reshard()
+    print("after post reshard")
+    # Flat parameter freed or not, we always have to "unshard" the parameter
+    # upon next access to get its shape correct.
+    handle._prefetched = False
 
 @no_type_check
 def _unshard(
