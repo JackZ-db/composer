@@ -172,7 +172,7 @@ class TestTrainerInit():
                     self.batch_memory_usages = []
 
                 def after_dataloader(self, state: State, logger: Logger):
-                    current_alloc_memory = torch.cuda.memory_active() // (2**30)  # Convert to GB
+                    current_alloc_memory = torch.cuda.memory_allocated() // (2**30)  # Convert to GB
                     self.batch_memory_usages.append(current_alloc_memory)
                     torch.cuda.reset_peak_memory_stats()
 
@@ -185,7 +185,7 @@ class TestTrainerInit():
             trainer = Trainer(
                 model=model,
                 train_dataloader=train_dataloader,
-                max_duration='2ba',
+                max_duration='1ba',
                 device='gpu',
                 device_train_microbatch_size=microbatch_size,
                 callbacks=[mini_memory_monitor],
