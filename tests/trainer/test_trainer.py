@@ -172,12 +172,12 @@ class TestTrainerInit():
                     self.batch_memory_usages = []
 
                 def epoch_start(self, state: State, logger: Logger) -> None:
-                    current_alloc_memory = torch.cuda.memory_allocated() // 2**20 # Convert to MiB
-                    self.batch_memory_usages.append(current_alloc_memory) 
-                
+                    current_alloc_memory = torch.cuda.memory_allocated() // 2**20  # Convert to MiB
+                    self.batch_memory_usages.append(current_alloc_memory)
+
                 def after_dataloader(self, state: State, logger: Logger):
-                    current_alloc_memory = torch.cuda.memory_allocated() // 2**20 # Convert to MiB
-                    self.batch_memory_usages.append(current_alloc_memory) 
+                    current_alloc_memory = torch.cuda.memory_allocated() // 2**20  # Convert to MiB
+                    self.batch_memory_usages.append(current_alloc_memory)
 
             microbatch_size = 1
             input_shape = (100000,)
@@ -197,18 +197,12 @@ class TestTrainerInit():
             trainer.fit()
             return mini_memory_monitor.batch_memory_usages[1] - mini_memory_monitor.batch_memory_usages[0]
 
-        memory_changes_across_diff_batch_sizes = []
-        for global_batch_size in [8, 32]:
-            memory_changes_across_diff_batch_sizes.append(track_memory_after_dataloader(global_batch_size))
-        max_val = max(memory_changes_across_diff_batch_sizes)
-        min_val = min(memory_changes_across_diff_batch_sizes)
-        assert (max(memory_changes_across_diff_batch_sizes) - min(memory_changes_across_diff_batch_sizes) < 10), (
-            f'Memory increase after dataloader varied by more than 10 MiB across different global batch sizes with same microbatch size. '
-            f'Global Batch Size = 32: {max_val} MiB, Global Batch Size = 8: {min_val} MiB'
+        global_batch_size = 32
+        mem_change_epoch_start_and_after_dataloader = track_memory_after_dataloader(global_batch_size)
+        assert (mem_change_epoch_start_and_after_dataloader < 1), (
+            f'Memory increased between epoch start and after dataloader by more than 1 MiB: {mem_change_epoch_start_and_after_dataloader} MiB. '
+            f'None of the samples should be moved onto a GPU until the batch has already been divided into microbatches.'
         )
-        print(max_val)
-        print(min_val)
-        assert False
 
     def test_eval_metrics(self):
         model = SimpleModel()
