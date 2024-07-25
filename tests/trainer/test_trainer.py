@@ -202,6 +202,7 @@ class TestTrainerInit():
         assert (max(memory_across_diff_batch_sizes) - min(memory_across_diff_batch_sizes) < 0.1), (
             f'Memory usage varied by more than 0.1GB across different global batch sizes with same microbatch size. '
         )
+        assert False
 
     def test_eval_metrics(self):
         model = SimpleModel()
