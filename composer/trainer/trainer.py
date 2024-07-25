@@ -3132,6 +3132,7 @@ class Trainer:
 
         with sync_context:
             # Forward pass
+            print(torch.cuda.memory_allocated())
             self.engine.run_event(Event.BEFORE_FORWARD)
 
             with _get_precision_context(
@@ -3239,6 +3240,7 @@ class Trainer:
                 remote_file_name = os.path.join(remote_path_in_bucket, os.path.basename(filename_after)).lstrip('/')
                 self.logger.upload_file(remote_file_name=remote_file_name, file_path=filename_after, overwrite=False)
                 """
+                print("reached backward")
                 microbatch_loss.backward(create_graph=self._backwards_create_graph)
 
             
