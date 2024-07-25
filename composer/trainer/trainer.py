@@ -1117,6 +1117,7 @@ class Trainer:
 
         self.auto_microbatch_size_found = False
         self.alloc_retries = 0
+        self.num_consecutive_alloc_retries = 0
 
         self.auto_log_hparams = auto_log_hparams
         self.python_log_level = python_log_level
@@ -2854,6 +2855,11 @@ class Trainer:
                         )
                     dist.all_reduce(thrashing_tensor, reduce_operation='MAX')
                     thrashing = thrashing_tensor.item() == 1
+                    if thrashing:
+                        self.num_consecutive_alloc_retries += 1
+                    else:
+                        self.num_consecutive_alloc_retries = 0
+
 
                 if found_cuda_oom == 1: 
                     # Manually clean up state and reshard if an OOM prevents a batch from finishing
@@ -2913,8 +2919,9 @@ class Trainer:
                         # Skip return and continue searching for the highest non-OOM size in this narrower range
                         continue
                 else:
-                    if thrashing:
+                    if self.num_consecutive_alloc_retries >= 2:
                         retrying_from_thrashing = True
+                        self.num_consecutive_alloc_retries = 0
                         lowest_oom_microbatch_size = self.state.device_train_microbatch_size
                         baseline_microbatch_size = closest_lower_power_of_2(self.state.device_train_microbatch_size)
                         highest_non_oom_microbatch_size = baseline_microbatch_size
