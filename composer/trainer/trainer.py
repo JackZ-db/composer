@@ -2828,13 +2828,16 @@ class Trainer:
                     found_cuda_oom_tensor = self.state.device.tensor_to_device(
                         torch.tensor([found_cuda_oom], dtype=torch.uint8),
                     )
+                    print("OOM sync in trainer")
                     dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
                     found_cuda_oom = found_cuda_oom_tensor.item()
                     # Check if any rank is still not done with the batch. This may happen if only a
                     # subset of ranks OOM, leaving some batches still in the forward pass
                     all_ranks_finished_tensor = self.state.device.tensor_to_device(torch.tensor([1], dtype=torch.uint8))
+                    print("finish sync in trainer")
                     dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
                     all_ranks_finished = all_ranks_finished_tensor.item() == 1
+                    print("finished trainer hook")
                 
                 #if self.auto_microbatch_size_found or retrying_for_thrashing:
                 print("out of OOM check")
