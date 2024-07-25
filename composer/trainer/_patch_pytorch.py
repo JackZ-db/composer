@@ -85,13 +85,13 @@ log = logging.getLogger(__name__)
 def patch_pytorch():
 
     from torch.distributed.fsdp import _runtime_utils
-    #_runtime_utils._post_backward_hook = (_post_backward_hook)
+    _runtime_utils._post_backward_hook = (_post_backward_hook)
     #_runtime_utils._unshard = (_unshard)
 
     
     FlatParamHandle.unshard = (unshard)
-    _runtime_utils._post_forward = (_post_forward)
-    _runtime_utils._post_forward_reshard = (_post_forward_reshard)
+    #_runtime_utils._post_forward = (_post_forward)
+    #_runtime_utils._post_forward_reshard = (_post_forward_reshard)
 
     """Monkey patches pytorch functions based on pytorch version."""
     if version.parse(torch.__version__) < version.parse('2.1.1'):
