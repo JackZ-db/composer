@@ -162,16 +162,16 @@ class TestTrainerInit():
             assert '`model` is already compiled with `torch.compile`' in caplog.text
 
     @pytest.mark.gpu
-    def test_memory_usage_with_diff_batch_sizes(self, model: ComposerModel):
+    def test_memory_after_dataloader(self, model: ComposerModel):
 
-        def train_and_track_memory(global_batch_size):
+        def track_memory_after_dataloader(global_batch_size):
 
             class MiniMemoryMonitor(Callback):
 
                 def __init__(self):
                     self.batch_memory_usages = []
 
-                def after_train_batch(self, state: State, logger: Logger):
+                def after_dataloader(self, state: State, logger: Logger):
                     current_alloc_memory = torch.cuda.max_memory_allocated() // (2**30)  # Convert to GB
                     self.batch_memory_usages.append(current_alloc_memory)
                     torch.cuda.reset_peak_memory_stats()
@@ -196,7 +196,7 @@ class TestTrainerInit():
 
         memory_across_diff_batch_sizes = []
         for global_batch_size in [8, 4096]:
-            memory_across_diff_batch_sizes.append(train_and_track_memory(global_batch_size))
+            memory_across_diff_batch_sizes.append(track_memory_after_dataloader(global_batch_size))
             assert (max(memory_across_diff_batch_sizes) - min(memory_across_diff_batch_sizes) < 0.0000001), (
                 f'Memory usage varied by more than 0.1GB across different global batch sizes with same microbatch size. '
             )
