@@ -2761,6 +2761,7 @@ class Trainer:
         i = 1
 
         #torch.cuda.memory._record_memory_history()
+        first_success = False
 
         while True:
             # Reset train_metrics on every batch
@@ -2919,6 +2920,12 @@ class Trainer:
                         # Skip return and continue searching for the highest non-OOM size in this narrower range
                         continue
                 else:
+                    if not self.first_batch_complete and not first_success:
+                        # First successful microbatch size found
+                        first_success = True
+                        _clear_incomplete_train_states(self.state)
+                        continue  # Rerun with the same size since this is our first successful batch completion
+
                     if self.num_consecutive_alloc_retries >= 2:
                         retrying_from_thrashing = True
                         self.num_consecutive_alloc_retries = 0
