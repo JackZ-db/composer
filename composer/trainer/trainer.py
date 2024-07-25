@@ -2821,6 +2821,7 @@ class Trainer:
                     raise
 
             if self.state.auto_microbatching:
+                print("finish")
                 all_ranks_finished = False
                 while not all_ranks_finished:
                     # Propagate across all ranks if any rank hit CUDA OOM
@@ -2836,7 +2837,7 @@ class Trainer:
                     all_ranks_finished = all_ranks_finished_tensor.item() == 1
                 
                 #if self.auto_microbatch_size_found or retrying_for_thrashing:
-
+                print("out of OOM check")
                 thrashing = False
                 if self.auto_microbatch_size_found and not retrying_from_thrashing:
                     # Check for thrashing between batches or once we think we've found an optimal non-OOM microbatch size
