@@ -91,6 +91,7 @@ def patch_pytorch():
     
     FlatParamHandle.unshard = (unshard)
     _runtime_utils._post_forward = (_post_forward)
+    _runtime_utils._post_forward_reshard = (_post_forward_reshard)
 
     """Monkey patches pytorch functions based on pytorch version."""
     if version.parse(torch.__version__) < version.parse('2.1.1'):
@@ -265,6 +266,25 @@ def _post_forward(
         print("out post forward")
         return output
 
+@no_type_check
+def _post_forward_reshard(
+    state: _FSDPState,
+    handle: FlatParamHandle,
+) -> None:
+    """Reshards parameters in the post-forward."""
+    print("enter post_forward_reshard")
+    if not handle:
+        return
+    # Do not free the root's parameters in the post-forward for `FULL_SHARD`
+    # with the intention that they are immediately used for backward
+    # computation (though this may not be true)
+    free_unsharded_flat_param = (
+        not state._is_root
+        and handle._sharding_strategy in RESHARD_AFTER_FORWARD_HANDLE_STRATEGIES
+    )
+    print("before reshard")
+    _reshard(state, handle, free_unsharded_flat_param)
+    print("after post_forward_reshard")
 
 @no_type_check
 def unshard(self):
