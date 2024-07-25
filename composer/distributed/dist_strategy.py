@@ -246,8 +246,9 @@ def prepare_fsdp_module(
             # Full backward hook
             hook_type = "Full backward hook"
         else:
-            module = "Unknown"
             hook_type = "Unknown hook type"
+
+        module = args[0]
 
         print(f"Sync hook {sync_hook_counter} called for module: {module}")
         print(f"Hook type: {hook_type}")
