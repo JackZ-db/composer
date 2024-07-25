@@ -2931,6 +2931,7 @@ class Trainer:
                         baseline_microbatch_size = closest_lower_power_of_2(self.state.device_train_microbatch_size)
                         highest_non_oom_microbatch_size = baseline_microbatch_size
                         self.state.device_train_microbatch_size = baseline_microbatch_size
+                        _clear_incomplete_train_states(self.state)
                         continue
 
                     if not self.auto_microbatch_size_found: # microbatch size found in previous search
