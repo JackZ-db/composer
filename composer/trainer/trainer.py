@@ -2863,6 +2863,7 @@ class Trainer:
 
 
                 if found_cuda_oom == 1: 
+                    print("in OOM")
                     # Manually clean up state and reshard if an OOM prevents a batch from finishing
                     _clear_incomplete_train_states(self.state)
                     self.auto_microbatch_size_found = False
@@ -2907,11 +2908,6 @@ class Trainer:
                         # Skip return and rerun to obtain loss - committing to this dtms unless retrying it OOMs
                         continue
                     else: # Only end up here if a previously non-OOM microbatch size is no longer successful in the same training step, and it's not the original microbatch size
-                        #lowest_oom_microbatch_size = self.state.device_train_microbatch_size
-                        #self.state.device_train_microbatch_size = highest_non_oom_microbatch_size
-                        #highest_non_oom_microbatch_size = baseline_microbatch_size
-                        
-                        #num_search_steps = 1
 
                         lowest_oom_microbatch_size = self.state.device_train_microbatch_size
                         highest_non_oom_microbatch_size = baseline_microbatch_size
@@ -2920,6 +2916,7 @@ class Trainer:
                         # Skip return and continue searching for the highest non-OOM size in this narrower range
                         continue
                 else:
+                    print("in non OOM")
                     if not self.first_batch_complete and not first_success:
                         # First successful microbatch size found
                         first_success = True
