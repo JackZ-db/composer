@@ -3097,6 +3097,8 @@ class Trainer:
         assert self.state.scaler is not None
         assert self._train_data_spec is not None
 
+        print(self.microbatch_number)
+
         # Cache the device batch, because `self.state.batch` gets overridden in microbatching loop
         device_batch = deepcopy(self.state.batch)
 
