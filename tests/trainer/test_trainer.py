@@ -197,10 +197,11 @@ class TestTrainerInit():
         memory_across_diff_batch_sizes = []
         for global_batch_size in [8, 32]:
             memory_across_diff_batch_sizes.append(track_memory_after_dataloader(global_batch_size))
-        print(max(memory_across_diff_batch_sizes))
-        print(min(memory_across_diff_batch_sizes))
+        max_val = max(memory_across_diff_batch_sizes)
+        min_val = min(memory_across_diff_batch_sizes)
         assert (max(memory_across_diff_batch_sizes) - min(memory_across_diff_batch_sizes) < 10), (
-            f'Memory usage varied by more than 10 MiB across different global batch sizes with same microbatch size.'
+            f'Memory usage varied by more than 10 MiB across different global batch sizes with same microbatch size. '
+            f'Global Batch Size = 32: {max_val} MiB, Global Batch Size = 8: {min_val} MiB'
         )
         assert False
 
