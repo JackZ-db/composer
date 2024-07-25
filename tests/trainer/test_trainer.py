@@ -197,11 +197,11 @@ class TestTrainerInit():
         memory_across_diff_batch_sizes = []
         for global_batch_size in [8, 4096]:
             memory_across_diff_batch_sizes.append(track_memory_after_dataloader(global_batch_size))
-            assert (max(memory_across_diff_batch_sizes) - min(memory_across_diff_batch_sizes) < 0.0000001), (
-                f'Memory usage varied by more than 0.1GB across different global batch sizes with same microbatch size. '
-            )
-            print(max(memory_across_diff_batch_sizes) - min(memory_across_diff_batch_sizes))
-        assert False
+        print(max(memory_across_diff_batch_sizes))
+        print(min(memory_across_diff_batch_sizes))
+        assert (max(memory_across_diff_batch_sizes) - min(memory_across_diff_batch_sizes) < 0.0000001), (
+            f'Memory usage varied by more than 0.1GB across different global batch sizes with same microbatch size. '
+        )
 
     def test_eval_metrics(self):
         model = SimpleModel()
