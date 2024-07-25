@@ -238,7 +238,30 @@ def prepare_fsdp_module(
     def sync_hook(*args):
         global sync_hook_counter
         sync_hook_counter += 1
-        print(args[0])
+        if kwargs:
+            # This is a forward pre-hook with kwargs
+            module, input_args = args
+            hook_type = "Forward pre-hook with kwargs"
+        else:
+            # This could be a forward pre-hook without kwargs, or a backward hook
+            if len(args) == 2 and isinstance(args[1], tuple):
+                # Forward pre-hook without kwargs
+                module, input_args = args
+                hook_type = "Forward pre-hook without kwargs"
+            elif len(args) == 2:
+                # Backward pre-hook
+                module, grad_output = args
+                hook_type = "Backward pre-hook"
+            elif len(args) == 3:
+                # Full backward hook
+                module, grad_input, grad_output = args
+                hook_type = "Full backward hook"
+            else:
+                module = "Unknown"
+                hook_type = "Unknown hook type"
+
+        print(f"Sync hook {sync_hook_counter} called for module: {module}")
+        print(f"Hook type: {hook_type}")
         # Check if any other rank hit an OOM
         found_cuda_oom_tensor = device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
         #if sync_hook_counter >= 500:
