@@ -238,6 +238,7 @@ def prepare_fsdp_module(
     def sync_hook(*args):
         global sync_hook_counter
         sync_hook_counter += 1
+        print(args[0])
         # Check if any other rank hit an OOM
         found_cuda_oom_tensor = device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
         #if sync_hook_counter >= 500:
