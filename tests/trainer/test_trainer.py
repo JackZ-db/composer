@@ -172,7 +172,7 @@ class TestTrainerInit():
                     self.batch_memory_usages = []
 
                 def after_dataloader(self, state: State, logger: Logger):
-                    current_alloc_memory = torch.cuda.memory_allocated() // (2**30)  # Convert to GB
+                    current_alloc_memory = torch.cuda.memory_active() // (2**30)  # Convert to GB
                     self.batch_memory_usages.append(current_alloc_memory)
                     torch.cuda.reset_peak_memory_stats()
 
@@ -201,7 +201,7 @@ class TestTrainerInit():
                 f'Memory usage varied by more than 0.1GB across different global batch sizes with same microbatch size. '
             )
             print(max(memory_across_diff_batch_sizes) - min(memory_across_diff_batch_sizes))
-
+        assert False
 
     def test_eval_metrics(self):
         model = SimpleModel()
