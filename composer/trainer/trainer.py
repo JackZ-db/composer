@@ -3328,7 +3328,7 @@ class Trainer:
 
         if self.state.deepspeed_enabled:
             self.state.deepspeed_model.step()
-        self.microbatch_number += 1
+        #self.microbatch_number += 1
         return microbatch_loss_dict
 
     def _increment_iteration(self):
