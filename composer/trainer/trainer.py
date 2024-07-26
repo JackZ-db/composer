@@ -2981,8 +2981,9 @@ class Trainer:
                         continue
 
                     if not self.auto_microbatch_size_found: # microbatch size found in previous search
-                        search_upwards, highest_non_oom_microbatch_size, num_search_steps = _handle_upward_search_in_automicrobatching(self.state, highest_non_oom_microbatch_size, 
-                                                                   num_search_steps, max_search_steps)
+                        search_upwards, highest_non_oom_microbatch_size, num_search_steps = _handle_upward_search_in_automicrobatching(self.state, lowest_oom_microbatch_size, 
+                                                                                                                                       highest_non_oom_microbatch_size, num_search_steps, 
+                                                                                                                                       max_search_steps)
                         if search_upwards:
                             continue
 
