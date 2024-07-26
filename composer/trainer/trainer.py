@@ -3050,14 +3050,17 @@ class Trainer:
                 )
             if self.auto_microbatch_size_found == False:
                 patch_unshard_for_automicrobatching(True)
+                print("pre wipe: " + str(torch.cuda.memory_allocated()))
                 for handle in self.auto_microbatch_hooks:
                     print("Removing " + str(handle))
                     handle.remove()
+                 print("post wipe: " + str(torch.cuda.memory_allocated()))
                 self.auto_microbatch_hooks = []
             self.auto_microbatch_size_found = True
             if torch.cuda.is_available():
                 memory_stats = torch.cuda.memory_stats()
                 self.num_alloc_retries = memory_stats["num_alloc_retries"]
+           
             self.logger.log_metrics({'trainer/device_train_microbatch_size': self.state.device_train_microbatch_size})
             self.first_batch_complete = True
             self.batch_number += 1
@@ -3177,6 +3180,7 @@ class Trainer:
         assert self.state.scaler is not None
         assert self._train_data_spec is not None
 
+        print("Microbatch: " + str(torch.cuda.memory_allocated()))
         # Cache the device batch, because `self.state.batch` gets overridden in microbatching loop
         device_batch = deepcopy(self.state.batch)
 
