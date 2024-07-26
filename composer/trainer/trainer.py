@@ -2800,10 +2800,31 @@ class Trainer:
                     all_ranks_finished_tensor = self.state.device.tensor_to_device(torch.tensor([1], dtype=torch.uint8))
                     dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
                     all_ranks_finished = all_ranks_finished_tensor.item() == 1
+                num_consecutive_thrashes = 0
+                num_alloc_retries = 0
                 if found_cuda_oom == 1:
                     _adjust_device_train_microbatch_size(self.state)
                     # Skip return and rerun after handling oom
                     continue
+                stats = torch.cuda.memory_stats()
+                cur_num_alloc_retries = stats["num_alloc_retries"]
+                
+                if cur_num_alloc_retries - num_alloc_retries > 0:
+                    alloc_retry_this_batch = 1
+                    #print("Found thrashing: " +  str(num_alloc_retries) + " to " + str(cur_num_alloc_retries))
+                else:
+                    alloc_retry_this_batch = 0
+
+                # Propagate across all ranks if any rank had alloc retries this batch
+                alloc_retry_tensor = self.state.device.tensor_to_device(
+                        torch.tensor([alloc_retry_this_batch], dtype=torch.uint8),
+                    )
+                dist.all_reduce(alloc_retry_tensor, reduce_operation='MAX')
+                alloc_retry_this_batch = alloc_retry_tensor.item() == 1
+                if alloc_retry_this_batch:
+                    num_consecutive_thrashes += 1
+                else:
+                    num_consecutive_thrashes = 0
             # Log microbatch and return loss if we've completed without OOMing.
             assert self.state.device_train_microbatch_size is not None
             self.logger.log_metrics({'trainer/device_train_microbatch_size': self.state.device_train_microbatch_size})
