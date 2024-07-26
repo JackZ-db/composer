@@ -84,6 +84,7 @@ log = logging.getLogger(__name__)
 def patch_unshard_for_automicrobatching(auto_microbatch_size_found=False):
     if auto_microbatch_size_found:
         FlatParamHandle.unshard = (unshard)
+        print("dropping monkey")
     else:
         FlatParamHandle.unshard = (unshard_with_sync)
 

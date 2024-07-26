@@ -204,7 +204,7 @@ def prepare_fsdp_module(
     device: Device,
     auto_microbatching: bool,
     te_rng_seed: int = 1234,
-) -> None:
+) -> list:
     """Prepare a module (assumed ComposerModel) and optimizer for use with :class:`torch.distributed.fsdp.FullyShardedDataParallel`.
 
     Args:
@@ -216,6 +216,9 @@ def prepare_fsdp_module(
         auto_microbatching (bool, optional): Whether or not auto microbatching is enabled.
         te_rng_seed(int): The seed to use for the Transformer Engine activation checkpointing RNG. Defaults to 1234.
     """
+
+    hook_handles = []
+
     # Check sync_module_states is True for mixed initialization or HSDP
     if fsdp_config.sync_module_states == False:
         rank_on_meta = 1 if next(model.parameters()).device.type == 'meta' else 0
@@ -593,6 +596,7 @@ def prepare_fsdp_module(
                 log.info(f'Calling prepare_te_modules_for_fsdp to enable TE weights sharding')
                 prepare_te_modules_for_fsdp(fsdp_obj)
             
+            """
             if auto_microbatching:
                 for name, module in fsdp_obj.named_modules():
                     if isinstance(module, FullyShardedDataParallel):
@@ -602,6 +606,18 @@ def prepare_fsdp_module(
                     else:
                         log.info(f"Adding backward sync hooks for original module: {name}")
                         module.register_full_backward_hook(sync_hook)
+            """
+
+            
+            if auto_microbatching:
+                for name, module in fsdp_obj.named_modules():
+                    if isinstance(module, FullyShardedDataParallel):
+                        log.info(f"Adding debug install hook for {name}")
+                        hook_handles.append(module.register_forward_pre_hook(sync_hook, prepend=True))
+                        hook_handles.append(module.register_full_backward_pre_hook(sync_hook, prepend=True))
+                    else:
+                        log.info(f"Adding backward sync hooks for original module: {name}")
+                        hook_handles.append(module.register_full_backward_hook(sync_hook))
 
             if hasattr(fsdp_obj, '_exec_order_data'):
                 if hasattr(fsdp_obj._exec_order_data, '_forward_prefetch_limit'):
@@ -763,3 +779,5 @@ def prepare_fsdp_module(
             assert optimizer_specific_info is not None
             optimizer_specific_info.update({'params': list(model.parameters())})
             optim.add_param_group(optimizer_specific_info)
+            
+    return hook_handles

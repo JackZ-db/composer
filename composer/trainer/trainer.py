@@ -1291,6 +1291,7 @@ class Trainer:
         self.auto_microbatch_size_found = False
         self.num_alloc_retries = 0
         self.num_consecutive_thrashes = 0
+        self.auto_microbatch_hooks = []
 
         self.auto_log_hparams = auto_log_hparams
         self.python_log_level = python_log_level
@@ -1853,7 +1854,7 @@ class Trainer:
         # FSDP wrap if not using monolith checkpoint on rank 0 only
         if self.state.fsdp_config is not None and self.state.fsdp_config.auto_wrap and not self.state.load_monolith_rank0_only:
             with reproducibility.seed_context(self.state.rank_zero_seed):
-                prepare_fsdp_module(
+                self.auto_microbatch_hooks = prepare_fsdp_module(
                     model,
                     optimizers,
                     self.state.fsdp_config,
@@ -2022,7 +2023,7 @@ class Trainer:
             self.state.load_monolith_rank0_only
         ):
             with reproducibility.seed_context(self.state.rank_zero_seed):
-                prepare_fsdp_module(model, optimizers, self.state.fsdp_config, precision, device, auto_microbatching)
+                self.auto_microbatch_hooks = prepare_fsdp_module(model, optimizers, self.state.fsdp_config, precision, device, auto_microbatching)
 
         self.engine.run_event(Event.AFTER_LOAD)
 
@@ -3049,6 +3050,10 @@ class Trainer:
                 )
             if self.auto_microbatch_size_found == False:
                 patch_unshard_for_automicrobatching(True)
+                for handle in self.auto_microbatch_hooks:
+                    print("Removing " + str(handle))
+                    handle.remove()
+                self.auto_microbatch_hooks = []
             self.auto_microbatch_size_found = True
             if torch.cuda.is_available():
                 memory_stats = torch.cuda.memory_stats()
