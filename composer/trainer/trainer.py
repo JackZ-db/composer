@@ -499,9 +499,9 @@ def _handle_upward_search_in_automicrobatching(state: State, lowest_oom_microbat
         # else: reached max search steps and found a non-OOM microbatch size
     return search_upwards, highest_non_oom_microbatch_size, num_search_steps
 
-def _handle_thrashing_in_automicrobatching(state: State)
+def _handle_thrashing_in_automicrobatching(state: State):
     lowest_oom_microbatch_size = state.device_train_microbatch_size
-    baseline_microbatch_size = _closest_lower_power_of_2(self.state.device_train_microbatch_size)
+    baseline_microbatch_size = _closest_lower_power_of_2(state.device_train_microbatch_size)
     highest_non_oom_microbatch_size = baseline_microbatch_size
     state.device_train_microbatch_size = baseline_microbatch_size
     return lowest_oom_microbatch_size, highest_non_oom_microbatch_size, baseline_microbatch_size 
