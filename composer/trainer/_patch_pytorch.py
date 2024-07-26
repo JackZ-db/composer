@@ -85,9 +85,9 @@ log = logging.getLogger(__name__)
 def patch_pytorch():
 
     from torch.distributed.fsdp import _runtime_utils
-    _runtime_utils._post_backward_hook = (_post_backward_hook)
+    #_runtime_utils._post_backward_hook = (_post_backward_hook)
     #_runtime_utils._unshard = (_unshard)
-    _runtime_utils._reshard = (_reshard)
+    #_runtime_utils._reshard = (_reshard)
 
     
     FlatParamHandle.unshard = (unshard)
