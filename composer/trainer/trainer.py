@@ -99,7 +99,7 @@ from composer.loggers.mosaicml_logger import MOSAICML_ACCESS_TOKEN_ENV_VAR, MOSA
 from composer.models import ComposerModel
 from composer.optim import ComposerScheduler, DecoupledSGDW, compile_composer_scheduler
 from composer.profiler import Profiler
-from composer.trainer._patch_pytorch import patch_pytorch
+from composer.trainer._patch_pytorch import patch_pytorch, patch_unshard_for_automicrobatching
 from composer.trainer._scale_schedule import scale_pytorch_scheduler
 from composer.trainer._scaler import ClosureGradScaler
 from composer.utils import (
@@ -1437,6 +1437,7 @@ class Trainer:
         if parallelism_config is not None:
             # Patch PyTorch to fix distributed bugs
             patch_pytorch()
+            patch_unshard_for_automicrobatching(self.auto_microbatch_size_found)
 
         # Reproducibility
         rank_zero_seed, seed = _distribute_and_get_random_seed(seed, device)
@@ -3046,6 +3047,8 @@ class Trainer:
                         f'{original_microbatch_size} -> {self.state.device_train_microbatch_size}.',
                         ),
                 )
+            if self.auto_microbatch_size_found == False:
+                patch_unshard_for_automicrobatching(True)
             self.auto_microbatch_size_found = True
             if torch.cuda.is_available():
                 memory_stats = torch.cuda.memory_stats()

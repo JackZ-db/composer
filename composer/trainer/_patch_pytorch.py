@@ -81,19 +81,13 @@ from torch.distributed.fsdp._common_utils import (
 
 log = logging.getLogger(__name__)
 
+def patch_unshard_for_automicrobatching(auto_microbatch_size_found=False):
+    if auto_microbatch_size_found:
+        FlatParamHandle.unshard = (unshard)
+    else:
+        FlatParamHandle.unshard = (unshard_with_sync)
 
 def patch_pytorch():
-
-    from torch.distributed.fsdp import _runtime_utils
-    #_runtime_utils._post_backward_hook = (_post_backward_hook)
-    #_runtime_utils._unshard = (_unshard)
-    #_runtime_utils._reshard = (_reshard)
-
-    
-    FlatParamHandle.unshard = (unshard)
-    #_runtime_utils._post_forward = (_post_forward)
-    #_runtime_utils._post_forward_reshard = (_post_forward_reshard)
-
     """Monkey patches pytorch functions based on pytorch version."""
     if version.parse(torch.__version__) < version.parse('2.1.1'):
         # Monkey patch for torch < 2.1.1 ie torch == 2.1.0
@@ -289,6 +283,33 @@ def _post_forward_reshard(
 
 @no_type_check
 def unshard(self):
+    """
+    Run the unshard logic.
+
+    This includes all-gathering the flat parameter
+    and switching to using the unsharded flat parameter. If the handle does
+    not need unsharding, then this only switches to using the unsharded
+    flat parameter. For ``NO_SHARD``, this is a no-op.
+
+    If FSDP is in :meth:`summon_full_params` and the handle uses parameter
+    mixed precision, then the parameter is forced to full precision.
+    """
+    if not self.needs_unshard():
+        # Even when not needing an unshard, we should switch to using
+        # the unsharded flat parameter
+        unsharded_flat_param = (
+            self._get_padded_unsharded_flat_param()
+            if self.uses_sharded_strategy
+            else self.flat_param
+        )
+        self._use_unsharded_flat_param(unsharded_flat_param)
+        return
+    unsharded_flat_param = self._alloc_padded_unsharded_flat_param()
+    padded_unsharded_flat_param = self._all_gather_flat_param(unsharded_flat_param)
+    self._use_unsharded_flat_param(padded_unsharded_flat_param)
+
+@no_type_check
+def unshard_with_sync(self):
     """
     Run the unshard logic.
 
