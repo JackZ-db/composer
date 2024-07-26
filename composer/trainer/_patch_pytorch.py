@@ -90,7 +90,7 @@ def patch_pytorch():
     #_runtime_utils._reshard = (_reshard)
 
     
-    #FlatParamHandle.unshard = (unshard)
+    FlatParamHandle.unshard = (unshard)
     #_runtime_utils._post_forward = (_post_forward)
     #_runtime_utils._post_forward_reshard = (_post_forward_reshard)
 
