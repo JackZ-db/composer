@@ -323,7 +323,7 @@ def unshard(self):
     dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
     
     if found_cuda_oom == 1:
-        print("broke in monkey")
+        #print("broke in monkey")
         raise RuntimeError('CUDA out of memory encountered on a different rank')
     padded_unsharded_flat_param = self._all_gather_flat_param(unsharded_flat_param)
     self._use_unsharded_flat_param(padded_unsharded_flat_param)

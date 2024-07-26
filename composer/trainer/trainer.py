@@ -427,7 +427,7 @@ def _update_num_consecutive_thrashes(state: State, num_consecutive_thrashes: int
     
     if cur_num_alloc_retries - num_alloc_retries > 0:
         alloc_retry_this_batch = 1
-        print("Found thrashing: " +  str(num_alloc_retries) + " to " + str(cur_num_alloc_retries))
+        #print("Found thrashing: " +  str(num_alloc_retries) + " to " + str(cur_num_alloc_retries))
     else:
         alloc_retry_this_batch = 0
 
@@ -3308,7 +3308,7 @@ class Trainer:
                 remote_file_name = os.path.join(remote_path_in_bucket, os.path.basename(filename_after)).lstrip('/')
                 self.logger.upload_file(remote_file_name=remote_file_name, file_path=filename_after, overwrite=False)
                 """
-                print("reached backward")
+                #print("reached backward")
                 microbatch_loss.backward(create_graph=self._backwards_create_graph)
 
             
