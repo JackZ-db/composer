@@ -3054,7 +3054,7 @@ class Trainer:
                 for handle in self.auto_microbatch_hooks:
                     print("Removing " + str(handle))
                     handle.remove()
-                 print("post wipe: " + str(torch.cuda.memory_allocated()))
+                print("post wipe: " + str(torch.cuda.memory_allocated()))
                 self.auto_microbatch_hooks = []
             self.auto_microbatch_size_found = True
             if torch.cuda.is_available():
