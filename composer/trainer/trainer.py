@@ -402,28 +402,109 @@ def _found_ooms_across_ranks(state: State, found_cuda_oom: bool):
         print("finished trainer hook")
     return found_cuda_oom
 
-def _update_num_consecutive_alloc_retries(state: State, num_consecutive_alloc_retries: int, alloc_retries: int):
-    # Check for thrashing between batches or once we think we've found an optimal non-OOM microbatch size
+def _update_num_consecutive_thrashes(state: State, num_consecutive_thrashes: int, num_alloc_retries: int):
+    # Check for alloc retries between batches
     stats = torch.cuda.memory_stats()
     cur_num_alloc_retries = stats["num_alloc_retries"]
     
-    if cur_num_alloc_retries - alloc_retries > 0:
-        thrashing = 1
-        print("Found thrashing: " +  str(alloc_retries) + " to " + str(cur_num_alloc_retries))
+    if cur_num_alloc_retries - num_alloc_retries > 0:
+        alloc_retry_this_batch = 1
+        print("Found thrashing: " +  str(num_alloc_retries) + " to " + str(cur_num_alloc_retries))
     else:
-        thrashing = 0
+        alloc_retry_this_batch = 0
 
-    # Propagate across all ranks if any rank is thrashing 
-    thrashing_tensor = state.device.tensor_to_device(
-            torch.tensor([thrashing], dtype=torch.uint8),
+    # Propagate across all ranks if any rank had alloc retries this batch
+    alloc_retry_tensor = state.device.tensor_to_device(
+            torch.tensor([alloc_retry_this_batch], dtype=torch.uint8),
         )
-    dist.all_reduce(thrashing_tensor, reduce_operation='MAX')
-    thrashing = thrashing_tensor.item() == 1
-    if thrashing:
-        num_consecutive_alloc_retries += 1
+    dist.all_reduce(alloc_retry_tensor, reduce_operation='MAX')
+    alloc_retry_this_batch = alloc_retry_tensor.item() == 1
+    if alloc_retry_this_batch:
+        num_consecutive_thrashes += 1
     else:
-        num_consecutive_alloc_retries = 0
-    return num_consecutive_alloc_retries
+        num_consecutive_thrashes = 0
+    return num_consecutive_thrashes
+
+def _handle_downward_search_in_automicrobatching(state: State, lowest_oom_microbatch_size: int, highest_non_oom_microbatch_size: int, baseline_microbatch_size: int, num_search_steps: int, max_search_steps: int):
+    # Find closest lower power of 2 if previously non-OOM microbatch size is OOMing
+    if state.device_train_microbatch_size == baseline_microbatch_size: 
+        lowest_oom_microbatch_size = state.device_train_microbatch_size
+        baseline_microbatch_size = _closest_lower_power_of_2(state.device_train_microbatch_size)
+        state.device_train_microbatch_size = baseline_microbatch_size
+        highest_non_oom_microbatch_size = state.device_train_microbatch_size
+
+        num_search_steps = 1
+        # Skip return and continue searching for the highest non-OOM size in the new lower range
+    else:
+        if num_search_steps < max_search_steps:
+            lowest_oom_microbatch_size = state.device_train_microbatch_size
+            median_microbatch_size = int((lowest_oom_microbatch_size + highest_non_oom_microbatch_size) // 2)
+            state.device_train_microbatch_size = median_microbatch_size
+
+            num_search_steps += 1
+
+            #optimization so we don't spam convergence
+            if lowest_oom_microbatch_size == highest_non_oom_microbatch_size:
+                num_search_steps = max_search_steps + 1 # go to else protocol
+                lowest_oom_microbatch_size = state.device_train_microbatch_size
+                highest_non_oom_microbatch_size = baseline_microbatch_size
+                state.device_train_microbatch_size = int((lowest_oom_microbatch_size + highest_non_oom_microbatch_size) // 2)
+
+            # Skip return and decrease dtms, continuing the search for the highest non-OOM size
+        elif num_search_steps == max_search_steps: # Stop searching, choose most recently successful size
+            state.device_train_microbatch_size = highest_non_oom_microbatch_size
+
+            num_search_steps += 1
+            # Skip return and rerun to obtain loss - committing to this dtms unless retrying it OOMs
+        else: # Only end up here if a previously non-OOM microbatch size is no longer successful in the same training step, and it's not the original microbatch size
+
+            lowest_oom_microbatch_size = state.device_train_microbatch_size
+            highest_non_oom_microbatch_size = baseline_microbatch_size
+            state.device_train_microbatch_size = int((lowest_oom_microbatch_size + highest_non_oom_microbatch_size) // 2)
+
+            # Skip return and continue searching for the highest non-OOM size in this narrower range
+        return lowest_oom_microbatch_size, highest_non_oom_microbatch_size, baseline_microbatch_size, num_search_steps
+
+def _handle_upward_search_in_automicrobatching(state: State, lowest_oom_microbatch_size: int, highest_non_oom_microbatch_size: int, num_search_steps: int, max_search_steps: int):
+    assert state.train_dataloader is not None
+    try:
+        batch_size = getattr(state.train_dataloader, 'batch_size')
+    except AttributeError as e:
+        # Error message when `device_train_microbatch_size` is 'auto'
+        raise AttributeError(
+            "`device_train_microbatch_size='auto'` requires the `state.train_dataloader` to have a `batch_size` attribute.",
+        ) from e
+    
+    search_upwards = False
+    
+    if state.device_train_microbatch_size != batch_size:
+        if num_search_steps == 0:
+            highest_non_oom_microbatch_size = state.device_train_microbatch_size
+            _double_device_train_microbatch_size(state)
+            _clear_incomplete_train_states(state)
+            search_upwards = True
+        elif num_search_steps < max_search_steps: # Previous OOMs found in this training step 
+            highest_non_oom_microbatch_size = state.device_train_microbatch_size
+            median_microbatch_size = int((highest_non_oom_microbatch_size + lowest_oom_microbatch_size) // 2)
+            state.device_train_microbatch_size = median_microbatch_size
+            
+            num_search_steps += 1
+
+            #optimization so we don't spam convergence
+            if median_microbatch_size == highest_non_oom_microbatch_size:
+                num_search_steps = max_search_steps
+
+            _clear_incomplete_train_states(state)
+            search_upwards = True
+        # else: reached max search steps and found a non-OOM microbatch size
+    return search_upwards, highest_non_oom_microbatch_size, num_search_steps
+
+def _handle_thrashing_in_automicrobatching(state: State)
+    lowest_oom_microbatch_size = state.device_train_microbatch_size
+    baseline_microbatch_size = _closest_lower_power_of_2(self.state.device_train_microbatch_size)
+    highest_non_oom_microbatch_size = baseline_microbatch_size
+    state.device_train_microbatch_size = baseline_microbatch_size
+    return lowest_oom_microbatch_size, highest_non_oom_microbatch_size, baseline_microbatch_size 
 
 def _adjust_device_eval_microbatch_size(evaluator: Evaluator):
     """Adjust device_eval_microbatch_size if we encounter OOM.
@@ -1158,8 +1239,8 @@ class Trainer:
         self.iteration = 1
 
         self.auto_microbatch_size_found = False
-        self.alloc_retries = 0
-        self.num_consecutive_alloc_retries = 0
+        self.num_alloc_retries = 0
+        self.num_consecutive_thrashes = 0
 
         self.auto_log_hparams = auto_log_hparams
         self.python_log_level = python_log_level
@@ -2797,7 +2878,7 @@ class Trainer:
         original_microbatch_size = self.state.device_train_microbatch_size
         baseline_microbatch_size = self.state.device_train_microbatch_size
 
-        retrying_from_thrashing = False
+        searching_for_non_thrashing_microbatch_size = False
 
         # Retry until we successfully complete training and return loss
         i = 1
@@ -2866,13 +2947,11 @@ class Trainer:
                 # Sync for OOMs
                 found_cuda_oom = _found_ooms_across_ranks(self.state, found_cuda_oom)
 
-                # Sync for thrashing
-                if torch.cuda.is_available() and self.auto_microbatch_size_found and not retrying_from_thrashing:
-                    self.num_consecutive_alloc_retries = _update_num_consecutive_alloc_retries(self.state, self.num_consecutive_alloc_retries, self.alloc_retries)
-
+                # Sync for alloc retries
+                if torch.cuda.is_available() and self.auto_microbatch_size_found and not searching_for_non_thrashing_microbatch_size:
+                    self.num_consecutive_thrashes = _update_num_consecutive_thrashes(self.state, self.num_consecutive_thrashes, self.num_alloc_retries)
 
                 if found_cuda_oom == 1: 
-                    print("in OOM")
                     # Manually clean up state and reshard if an OOM prevents a batch from finishing
                     _clear_incomplete_train_states(self.state)
                     self.auto_microbatch_size_found = False
@@ -2883,95 +2962,29 @@ class Trainer:
                             'The GPU does not have enough memory to process even 1 sample during train.'
                         ))
 
-                    # Find closest lower power of 2 if previously non-OOM microbatch size is OOMing
-                    if self.state.device_train_microbatch_size == baseline_microbatch_size: 
-                        lowest_oom_microbatch_size = self.state.device_train_microbatch_size
-                        baseline_microbatch_size = _closest_lower_power_of_2(self.state.device_train_microbatch_size)
-                        self.state.device_train_microbatch_size = baseline_microbatch_size
-                        highest_non_oom_microbatch_size = self.state.device_train_microbatch_size
-
-                        num_search_steps = 1
-                        # Skip return and continue searching for the highest non-OOM size in the new lower range
-                        continue
-
-                    if num_search_steps < max_search_steps:
-                        lowest_oom_microbatch_size = self.state.device_train_microbatch_size
-                        median_microbatch_size = int((lowest_oom_microbatch_size + highest_non_oom_microbatch_size) // 2)
-                        self.state.device_train_microbatch_size = median_microbatch_size
-
-                        num_search_steps += 1
-
-                        #optimization so we don't spam convergence
-                        if lowest_oom_microbatch_size == highest_non_oom_microbatch_size:
-                            num_search_steps = max_search_steps + 1 # go to else protocol
-                            lowest_oom_microbatch_size = self.state.device_train_microbatch_size
-                            highest_non_oom_microbatch_size = baseline_microbatch_size
-                            self.state.device_train_microbatch_size = int((lowest_oom_microbatch_size + highest_non_oom_microbatch_size) // 2)
-
-                        # Skip return and decrease dtms, continuing the search for the highest non-OOM size
-                        continue
-                    elif num_search_steps == max_search_steps: # Stop searching, choose most recently successful size
-                        self.state.device_train_microbatch_size = highest_non_oom_microbatch_size
-
-                        num_search_steps += 1
-                        # Skip return and rerun to obtain loss - committing to this dtms unless retrying it OOMs
-                        continue
-                    else: # Only end up here if a previously non-OOM microbatch size is no longer successful in the same training step, and it's not the original microbatch size
-
-                        lowest_oom_microbatch_size = self.state.device_train_microbatch_size
-                        highest_non_oom_microbatch_size = baseline_microbatch_size
-                        self.state.device_train_microbatch_size = int((lowest_oom_microbatch_size + highest_non_oom_microbatch_size) // 2)
-
-                        # Skip return and continue searching for the highest non-OOM size in this narrower range
-                        continue
+                    lowest_oom_microbatch_size, highest_non_oom_microbatch_size, baseline_microbatch_size, num_search_steps = _handle_downward_search_in_automicrobatching(self.state, lowest_oom_microbatch_size, 
+                                                                                                                                                                                 highest_non_oom_microbatch_size, baseline_microbatch_size, 
+                                                                                                                                                                                 num_search_steps, max_search_steps)
+                    continue
                 else:
-                    print("in non OOM")
                     if not self.first_batch_complete and not first_success:
                         # First successful microbatch size found
                         first_success = True
                         _clear_incomplete_train_states(self.state)
                         continue  # Rerun with the same size since this is our first successful batch completion
 
-                    if self.num_consecutive_alloc_retries >= 2:
-                        retrying_from_thrashing = True
-                        self.num_consecutive_alloc_retries = 0
-                        lowest_oom_microbatch_size = self.state.device_train_microbatch_size
-                        baseline_microbatch_size = _closest_lower_power_of_2(self.state.device_train_microbatch_size)
-                        highest_non_oom_microbatch_size = baseline_microbatch_size
-                        self.state.device_train_microbatch_size = baseline_microbatch_size
+                    if self.num_consecutive_thrashes >= 2:
+                        searching_for_non_thrashing_microbatch_size = True
+                        self.num_consecutive_thrashes = 0
                         _clear_incomplete_train_states(self.state)
+                        lowest_oom_microbatch_size, highest_non_oom_microbatch_size, baseline_microbatch_size = _handle_thrashing_in_automicrobatching(self.state)
                         continue
 
                     if not self.auto_microbatch_size_found: # microbatch size found in previous search
-                        assert self.state.train_dataloader is not None
-                        try:
-                            batch_size = getattr(self.state.train_dataloader, 'batch_size')
-                        except AttributeError as e:
-                            # Error message when `device_train_microbatch_size` is 'auto'
-                            raise AttributeError(
-                                "`device_train_microbatch_size='auto'` requires the `state.train_dataloader` to have a `batch_size` attribute.",
-                            ) from e
-                        
-                        if self.state.device_train_microbatch_size != batch_size:
-                            if num_search_steps == 0:
-                                highest_non_oom_microbatch_size = self.state.device_train_microbatch_size
-                                _double_device_train_microbatch_size(self.state)
-                                _clear_incomplete_train_states(self.state)
-                                continue
-                            elif num_search_steps < max_search_steps: # Previous OOMs found in this training step 
-                                highest_non_oom_microbatch_size = self.state.device_train_microbatch_size
-                                median_microbatch_size = int((highest_non_oom_microbatch_size + lowest_oom_microbatch_size) // 2)
-                                self.state.device_train_microbatch_size = median_microbatch_size
-                                
-                                num_search_steps += 1
-
-                                #optimization so we don't spam convergence
-                                if median_microbatch_size == highest_non_oom_microbatch_size:
-                                    num_search_steps = max_search_steps
-
-                                _clear_incomplete_train_states(self.state)
-                                continue
-                            # else: reached max search steps and found a non-OOM microbatch size
+                        search_upwards, highest_non_oom_microbatch_size, num_search_steps = _handle_upward_search_in_automicrobatching(self.state, highest_non_oom_microbatch_size, 
+                                                                   num_search_steps, max_search_steps)
+                        if search_upwards:
+                            continue
 
             # Log microbatch and return loss if we've completed without OOMing.
             assert self.state.device_train_microbatch_size is not None
@@ -2985,7 +2998,7 @@ class Trainer:
             self.auto_microbatch_size_found = True
             if torch.cuda.is_available():
                 memory_stats = torch.cuda.memory_stats()
-                self.alloc_retries = memory_stats["num_alloc_retries"]
+                self.num_alloc_retries = memory_stats["num_alloc_retries"]
             self.logger.log_metrics({'trainer/device_train_microbatch_size': self.state.device_train_microbatch_size})
             self.first_batch_complete = True
             self.batch_number += 1
