@@ -250,7 +250,7 @@ def prepare_fsdp_module(
             hook_type = "Unknown hook type"
 
         module = args[0]
-        """"
+        """
 
         #print(f"Sync hook {sync_hook_counter} called for module: {module}")
         #print(f"Hook type: {hook_type}")
