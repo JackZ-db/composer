@@ -402,6 +402,29 @@ def _found_ooms_across_ranks(state: State, found_cuda_oom: bool):
         print("finished trainer hook")
     return found_cuda_oom
 
+def _update_num_consecutive_alloc_retries(state: State, num_consecutive_alloc_retries: int, alloc_retries: int):
+    # Check for thrashing between batches or once we think we've found an optimal non-OOM microbatch size
+    stats = torch.cuda.memory_stats()
+    cur_num_alloc_retries = stats["num_alloc_retries"]
+    
+    if cur_num_alloc_retries - alloc_retries > 0:
+        thrashing = 1
+        print("Found thrashing: " +  str(alloc_retries) + " to " + str(cur_num_alloc_retries))
+    else:
+        thrashing = 0
+
+    # Propagate across all ranks if any rank is thrashing 
+    thrashing_tensor = state.device.tensor_to_device(
+            torch.tensor([thrashing], dtype=torch.uint8),
+        )
+    dist.all_reduce(thrashing_tensor, reduce_operation='MAX')
+    thrashing = thrashing_tensor.item() == 1
+    if thrashing:
+        num_consecutive_alloc_retries += 1
+    else:
+        num_consecutive_alloc_retries = 0
+    return num_consecutive_alloc_retries
+
 def _adjust_device_eval_microbatch_size(evaluator: Evaluator):
     """Adjust device_eval_microbatch_size if we encounter OOM.
 
@@ -2840,31 +2863,12 @@ class Trainer:
                     raise
 
             if self.state.auto_microbatching:
+                # Sync for OOMs
                 found_cuda_oom = _found_ooms_across_ranks(self.state, found_cuda_oom)
-               
-                thrashing = False
-                if self.auto_microbatch_size_found and not retrying_from_thrashing:
-                    # Check for thrashing between batches or once we think we've found an optimal non-OOM microbatch size
-                    if torch.cuda.is_available():
-                        stats = torch.cuda.memory_stats()
-                        cur_num_alloc_retries = stats["num_alloc_retries"]
-                    
-                    if cur_num_alloc_retries - self.alloc_retries > 0:
-                        thrashing = 1
-                        print("Found thrashing: " +  str(self.alloc_retries) + " to " + str(cur_num_alloc_retries))
-                    else:
-                        thrashing = 0
 
-                    # Propagate across all ranks if any rank is thrashing 
-                    thrashing_tensor = self.state.device.tensor_to_device(
-                            torch.tensor([thrashing], dtype=torch.uint8),
-                        )
-                    dist.all_reduce(thrashing_tensor, reduce_operation='MAX')
-                    thrashing = thrashing_tensor.item() == 1
-                    if thrashing:
-                        self.num_consecutive_alloc_retries += 1
-                    else:
-                        self.num_consecutive_alloc_retries = 0
+                # Sync for thrashing
+                if torch.cuda.is_available() and self.auto_microbatch_size_found and not retrying_from_thrashing:
+                    self.num_consecutive_alloc_retries = _update_num_consecutive_alloc_retries(self.state, self.num_consecutive_alloc_retries, self.alloc_retries)
 
 
                 if found_cuda_oom == 1: 
