@@ -39,6 +39,7 @@ log = logging.getLogger(__name__)
 
 process_group_cache = {}
 
+sync_hook_counter = 0
 
 class DDPSyncStrategy(StringEnum):
     """How and when gradient synchronization should happen.
@@ -129,7 +130,7 @@ def prepare_ddp_module(module: torch.nn.Module, find_unused_parameters: bool) ->
         if any((p.requires_grad for p in module.parameters())):
             log.debug('Wrapping model with DistributedDataParallel')
             ddp_model = DistributedDataParallel(module, find_unused_parameters=find_unused_parameters)
-            return ddp_model
+            return ddp_model 
         return module
     if dist.is_available():
         raise RuntimeError('Please call dist.initialize_dist() before calling ddp.prepare_module()')
@@ -235,15 +236,38 @@ def prepare_fsdp_module(
     # need to do this before the model weights are gathered for the next FSDP block, we wrap every
     # FSPD block with a hook that checks if any other rank OOMed.
     def sync_hook(*args):
+        global sync_hook_counter
+        sync_hook_counter += 1
+        
+        if len(args) == 2:
+            # Backward pre-hook
+            hook_type = "Backward or forward pre-hook"
+        elif len(args) == 3:
+            # Full backward hook
+            hook_type = "Full backward hook"
+        else:
+            hook_type = "Unknown hook type"
+
+        module = args[0]
+
+        #print(f"Sync hook {sync_hook_counter} called for module: {module}")
+        #print(f"Hook type: {hook_type}")
         # Check if any other rank hit an OOM
         found_cuda_oom_tensor = device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
+        #if sync_hook_counter >= 500:
+        #print("waiting for OOM sync hook " + str(sync_hook_counter)) 
         dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
         found_cuda_oom = found_cuda_oom_tensor.item()
         # Signal current rank is still in batch
         all_ranks_finished_tensor = device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
+        #if sync_hook_counter >= 500:
+        #print("waiting for finish sync hook " + str(sync_hook_counter))
         dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
-
+        #if sync_hook_counter >= 500:
+        #print("done syncing sync hook " + str(sync_hook_counter))
+        
         if found_cuda_oom == 1:
+            print("broke")
             raise RuntimeError('CUDA out of memory encountered on a different rank')
 
     # Necessary variables for optimizers with multiple param groups in FSDP
@@ -512,9 +536,9 @@ def prepare_fsdp_module(
                         ret = obj.fsdp_wrap_fn(module)
                         if isinstance(ret, dict):
                             ret = set_custom_fsdp_module_kwargs(ret, process_group_cache)
-                    if ret and auto_microbatching:
-                        module.register_forward_hook(sync_hook)
-                        module.register_full_backward_hook(sync_hook)
+                    #if ret and auto_microbatching:
+                        #module.register_forward_hook(sync_hook)
+                        #module.register_full_backward_hook(sync_hook)
                     return ret
 
                 _auto_wrap_policy = CustomPolicy(lambda_fn)
@@ -531,9 +555,9 @@ def prepare_fsdp_module(
                     elif hasattr(obj, 'fsdp_wrap_fn') and isinstance(obj.fsdp_wrap_fn, Callable):
                         should_be_wrapped = obj.fsdp_wrap_fn(module)
 
-                    if should_be_wrapped and auto_microbatching:
-                        module.register_forward_hook(sync_hook)
-                        module.register_full_backward_hook(sync_hook)
+                    #if should_be_wrapped and auto_microbatching:
+                        #module.register_forward_hook(sync_hook)
+                        #module.register_full_backward_hook(sync_hook)
                     return should_be_wrapped
 
                 def _auto_wrap_policy_new(module: torch.nn.Module, recurse: bool, nonwrapped_numel: int) -> bool:
@@ -566,6 +590,16 @@ def prepare_fsdp_module(
                     raise ModuleNotFoundError('Please install transformer-engine to use prepare_te_modules_for_fsdp')
                 log.info(f'Calling prepare_te_modules_for_fsdp to enable TE weights sharding')
                 prepare_te_modules_for_fsdp(fsdp_obj)
+            
+            if auto_microbatching:
+                for name, module in fsdp_obj.named_modules():
+                    if isinstance(module, FullyShardedDataParallel):
+                        log.info(f"bigning debug install hook for {name}")
+                        module.register_forward_pre_hook(sync_hook, prepend=True)
+                        module.register_full_backward_pre_hook(sync_hook, prepend=True)
+                    else:
+                        log.info(f"Adding backward sync hooks for original module: {name}")
+                        module.register_full_backward_hook(sync_hook)
 
             if hasattr(fsdp_obj, '_exec_order_data'):
                 if hasattr(fsdp_obj._exec_order_data, '_forward_prefetch_limit'):

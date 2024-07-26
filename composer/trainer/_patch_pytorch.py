@@ -18,7 +18,6 @@ from dataclasses import asdict
 from itertools import chain
 from typing import Any, Callable, Dict, Iterable, List, Generator, Optional, Set, Tuple, Union, cast, no_type_check
 
-
 import torch
 import torch.distributed._shard.sharded_tensor.metadata as sharded_tensor_meta
 from torch.distributed._shard.sharding_spec import ChunkShardingSpec
@@ -31,10 +30,70 @@ from torch.distributed.fsdp import FullyShardedDataParallel, ShardingStrategy
 from torch.distributed.fsdp._fsdp_extensions import _ext_pre_load_state_dict_transform
 from torch.distributed.utils import _replace_by_prefix
 
+from composer.utils import dist
+import torch.distributed.fsdp._traversal_utils as traversal_utils
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.autograd import Variable
+from torch.autograd.graph import register_multi_grad_hook
+from torch.distributed.algorithms._comm_hooks import LOW_PRECISION_HOOKS
+from torch.distributed.fsdp._common_utils import (
+    _assert_in_training_states,
+    _FSDPState,
+    _get_module_fsdp_state,
+    _is_composable,
+    _log_post_backward_hook,
+    _no_dispatch_record_stream,
+    clean_tensor_name,
+    TrainingState,
+    _no_dispatch_record_stream,
+)
+from torch.distributed.fsdp._flat_param import (
+    FlatParameter,
+    FlatParamHandle,
+    HandleShardingStrategy,
+    HandleTrainingState,
+    RESHARD_AFTER_FORWARD_HANDLE_STRATEGIES,
+)
+from torch.distributed.fsdp._init_utils import HYBRID_SHARDING_STRATEGIES
+from torch.distributed.fsdp.api import BackwardPrefetch
+from torch.distributed.utils import (
+    _apply_to_tensors,
+    _cast_forward_inputs,
+    _p_assert,
+    _to_kwargs,
+)
+
+import torch
+from torch.distributed.fsdp._runtime_utils import (
+    _post_backward_reshard,
+    _reduce_grad,
+    _reduce_grad_no_shard,
+    _low_precision_hook_enabled
+)
+from torch.distributed.fsdp._common_utils import (
+    _assert_in_training_states,
+    _FSDPState,
+    _log_post_backward_hook,
+    _no_dispatch_record_stream,
+)
+
+
 log = logging.getLogger(__name__)
 
 
 def patch_pytorch():
+
+    from torch.distributed.fsdp import _runtime_utils
+    #_runtime_utils._post_backward_hook = (_post_backward_hook)
+    #_runtime_utils._unshard = (_unshard)
+    #_runtime_utils._reshard = (_reshard)
+
+    
+    FlatParamHandle.unshard = (unshard)
+    #_runtime_utils._post_forward = (_post_forward)
+    #_runtime_utils._post_forward_reshard = (_post_forward_reshard)
+
     """Monkey patches pytorch functions based on pytorch version."""
     if version.parse(torch.__version__) < version.parse('2.1.1'):
         # Monkey patch for torch < 2.1.1 ie torch == 2.1.0
@@ -158,6 +217,270 @@ def build_metadata(
         shards_metadata.append(shard_metadata)
 
     return sharded_tensor_meta.ShardedTensorMetadata(shards_metadata, tensor_sizes, tensor_properties)
+
+@no_type_check
+def _post_forward(
+    state: _FSDPState,
+    handle: Optional[FlatParamHandle],
+    reshard_fn: Callable,
+    module: nn.Module,
+    input: Any,
+    output: Any,
+) -> Any:
+    """
+    Runs the post-forward logic. This includes an opportunity to reshard
+    currently unsharded parameters such as those used in the current forward
+    and registering pre-backward hooks on the forward outputs.
+
+    Args:
+        handles (List[FlatParamHandle]): Handles giving the parameters used in
+            the current forward.
+        reshard_fn (Optional[Callable]): A callable to reshard any currently
+            unsharded parameters (e.g. from the current forward) or ``None`` to
+            not do any resharding.
+        module (nn.Module): Module whose forward just ran, which should be a
+            fully sharded module (see [Note: Fully Sharded Module]); expected
+            by the hook signature.
+        input (Any): Unused; expected by the hook signature.
+        output (Any): Forward pass output; pre-backward hooks are registered on
+            the tensors that require gradients in this output.
+
+    Postcondition: Each ``FlatParameter`` 's data points to the sharded flat
+    parameter.
+    """
+    print("in post forward")
+    with torch.profiler.record_function("FullyShardedDataParallel._post_forward"):
+        # For `fully_shard` + `checkpoint`, skip post-forward logic in the
+        # recomputed forward
+        if handle and handle._training_state == HandleTrainingState.BACKWARD_PRE:
+            return output
+
+        state._exec_order_data.record_post_forward(handle)
+        if reshard_fn is not None:
+            reshard_fn(state, handle)
+        # Register pre-backward hooks to unshard the flat parameters for the
+        # gradient computation (if needed)
+        output = _register_pre_backward_hooks(state, module, output, handle)
+        state.training_state = TrainingState.IDLE
+        if handle:
+            handle._training_state = HandleTrainingState.IDLE
+        print("out post forward")
+        return output
+
+@no_type_check
+def _post_forward_reshard(
+    state: _FSDPState,
+    handle: FlatParamHandle,
+) -> None:
+    """Reshards parameters in the post-forward."""
+    print("enter post_forward_reshard")
+    if not handle:
+        return
+    # Do not free the root's parameters in the post-forward for `FULL_SHARD`
+    # with the intention that they are immediately used for backward
+    # computation (though this may not be true)
+    free_unsharded_flat_param = (
+        not state._is_root
+        and handle._sharding_strategy in RESHARD_AFTER_FORWARD_HANDLE_STRATEGIES
+    )
+    print("before reshard")
+    _reshard(state, handle, free_unsharded_flat_param)
+    print("after post_forward_reshard")
+
+@no_type_check
+def unshard(self):
+    """
+    Run the unshard logic.
+
+    This includes all-gathering the flat parameter
+    and switching to using the unsharded flat parameter. If the handle does
+    not need unsharding, then this only switches to using the unsharded
+    flat parameter. For ``NO_SHARD``, this is a no-op.
+
+    If FSDP is in :meth:`summon_full_params` and the handle uses parameter
+    mixed precision, then the parameter is forced to full precision.
+    """
+    if not self.needs_unshard():
+        # Even when not needing an unshard, we should switch to using
+        # the unsharded flat parameter
+        unsharded_flat_param = (
+            self._get_padded_unsharded_flat_param()
+            if self.uses_sharded_strategy
+            else self.flat_param
+        )
+        self._use_unsharded_flat_param(unsharded_flat_param)
+        return
+    unsharded_flat_param = self._alloc_padded_unsharded_flat_param()
+    #putting this out here for monkepatch
+    # Check if any other rank hit an OOM
+    found_cuda_oom_tensor = torch.tensor([0], dtype=torch.uint8).to(self.device, non_blocking=True)
+
+    dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
+    found_cuda_oom = found_cuda_oom_tensor.item()
+    # Signal current rank is still in batch
+    all_ranks_finished_tensor = torch.tensor([0], dtype=torch.uint8).to(self.device, non_blocking=True)
+    
+    dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
+    
+    if found_cuda_oom == 1:
+        #print("broke in monkey")
+        raise RuntimeError('CUDA out of memory encountered on a different rank')
+    padded_unsharded_flat_param = self._all_gather_flat_param(unsharded_flat_param)
+    self._use_unsharded_flat_param(padded_unsharded_flat_param)
+
+@no_type_check
+@torch.no_grad()
+def _post_backward_hook(
+    state: _FSDPState,
+    handle: FlatParamHandle,
+    flat_param,
+    *unused: Any,
+):
+    """
+    Reduce-scatters the gradient of ``handle`` 's ``FlatParameter``.
+
+    Precondition: The ``FlatParameter`` 's ``.grad`` attribute contains the
+    unsharded gradient for the local batch.
+
+    Postcondition:
+    - If using ``NO_SHARD``, then the ``.grad`` attribute is the reduced
+    unsharded gradient.
+    - Otherwise, the ``_saved_grad_shard`` attribute is the reduced sharded
+    gradient (accumulating with any existing gradient).
+    """
+    print("in _post_backward")
+    _log_post_backward_hook(state, handle, log)
+    flat_param = handle.flat_param
+    print("passed flat_param")
+    flat_param._post_backward_called = True
+    with torch.autograd.profiler.record_function(
+        "FullyShardedDataParallel._post_backward_hook"
+    ):
+        _assert_in_training_states(state, [TrainingState.FORWARD_BACKWARD])
+        # For multiple applications of reentrant AC across submodules sharing
+        # the same `FlatParameter`, the post-backward hook may run multiple
+        # times in one backward, in which case we permit the state to already
+        # be in `BACKWARD_POST`.
+        _p_assert(
+            handle._training_state
+            in (HandleTrainingState.BACKWARD_PRE, HandleTrainingState.BACKWARD_POST),
+            f"Expects `BACKWARD_PRE` or `BACKWARD_POST` state but got {handle._training_state}",
+        )
+        handle._training_state = HandleTrainingState.BACKWARD_POST
+
+        if flat_param.grad is None:
+            return
+        if flat_param.grad.requires_grad:
+            raise RuntimeError("FSDP does not support gradients of gradients")
+
+        print("before _post_backward_reshard")
+        _post_backward_reshard(state, handle)
+        print("after _post_backward_reshard")
+        if not state._sync_gradients:
+            if handle._use_orig_params:
+                handle._use_unsharded_grad_views()
+            return
+
+        # Wait for all ops in the current stream (e.g. gradient computation) to
+        # finish before reduce-scattering the gradient
+        if not torch.distributed._functional_collectives.is_torchdynamo_compiling():
+            state._post_backward_stream.wait_stream(
+                state._device_handle.current_stream()
+            )
+
+        with state._device_handle.stream(state._post_backward_stream):
+            autograd_computed_grad = flat_param.grad.data
+            if (
+                not _low_precision_hook_enabled(state)
+                and flat_param.grad.dtype != handle._reduce_dtype
+                # If we are forcing full precision but communicating grads
+                # (i.e. model.eval() + full precision in eval was configured), don't downcast gradient.
+                and not handle._force_full_precision
+            ):
+                flat_param.grad.data = flat_param.grad.to(handle._reduce_dtype)
+            if handle.uses_sharded_strategy:
+                print("beforen reduce if")
+                _reduce_grad(state, handle)
+                print("after reduce if")
+            else:
+                print("before reduce else")
+                _reduce_grad_no_shard(state, handle)
+                print("after reduce else")
+            # Since the unsharded gradient is produced in the computation
+            # stream and consumed in the post-backward stream, inform the
+            # caching allocator (before it goes out of scope)
+            _no_dispatch_record_stream(
+                autograd_computed_grad, state._post_backward_stream
+            )
+            print("exit post_backward_hook")
+
+@no_type_check
+def _reshard(
+    state: _FSDPState,
+    handle: FlatParamHandle,
+    free_unsharded_flat_param: bool,
+):
+    """
+    Reshards the handle. ``free_unsharded_flat_param`` indicates whether to
+    free the handle's padded unsharded flat parameter.
+    """
+    print("before handle reshard")
+    handle.reshard(free_unsharded_flat_param)
+    print("after handle reshard")
+    if state.limit_all_gathers and free_unsharded_flat_param:
+        if not torch.distributed._functional_collectives.is_torchdynamo_compiling():
+            # We don't run a even queue for freeing under torch compile atm
+            # But maybe we need to? TODO(voz): Look into this
+            free_event = state._device_handle.Event()
+            free_event.record()
+            print("before free event")
+            state._free_event_queue.enqueue(free_event)
+            print("after free event")
+    print("before post reshard")
+    handle.post_reshard()
+    print("after post reshard")
+    # Flat parameter freed or not, we always have to "unshard" the parameter
+    # upon next access to get its shape correct.
+    handle._prefetched = False
+
+@no_type_check
+def _unshard(
+    state: _FSDPState,
+    handle: FlatParamHandle,
+    unshard_stream: torch.Stream,
+    pre_unshard_stream: torch.Stream,
+) -> None:
+    """
+    Unshards the handles in ``handles``. If the handles are in
+    :meth:`summon_full_params` and are using mixed precision, then they are
+    forced to full precision.
+
+    Postcondition: handle's ``FlatParameter`` 's data is the padded
+    unsharded flat parameter on the compute device.
+    """
+    if not handle:
+        return
+    with state._device_handle.stream(pre_unshard_stream):
+        print("before pre_unshard")
+        ran_pre_unshard = handle.pre_unshard()
+        print("after pre_unshard")
+    if ran_pre_unshard:
+        print("before wait stream")
+        unshard_stream.wait_stream(pre_unshard_stream)
+        print("after wait stream")
+    if state.limit_all_gathers:
+        event = state._free_event_queue.dequeue_if_needed()
+        if event:
+            with torch.profiler.record_function(
+                "FullyShardedDataParallel.rate_limiter"
+            ):
+                event.synchronize()
+    with state._device_handle.stream(unshard_stream):
+        print("before unshard")
+        handle.unshard()
+        print("after unshard")
+        handle.post_unshard()
+        print("after post unshard")
 
 
 @no_type_check
