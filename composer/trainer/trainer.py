@@ -2883,7 +2883,6 @@ class Trainer:
         # Retry until we successfully complete training and return loss
         i = 1
 
-        #torch.cuda.memory._record_memory_history()
         first_success = False
 
         while True:
@@ -2955,6 +2954,7 @@ class Trainer:
                     # Manually clean up state and reshard if an OOM prevents a batch from finishing
                     _clear_incomplete_train_states(self.state)
                     self.auto_microbatch_size_found = False
+                    self.num_consecutive_thrashes = 0
 
                     if self.state.device_train_microbatch_size == 1:
                         raise RuntimeError((
@@ -3119,8 +3119,6 @@ class Trainer:
         assert self.state.scaler is not None
         assert self._train_data_spec is not None
 
-        print(self.microbatch_number)
-
         # Cache the device batch, because `self.state.batch` gets overridden in microbatching loop
         device_batch = deepcopy(self.state.batch)
 
@@ -3129,7 +3127,6 @@ class Trainer:
         else:
             microbatch_size = self._train_data_spec.get_num_samples_in_batch(self.state.batch)
         
-        print(str(self.iteration) + " microbatch " + str(self.microbatch_number) + " size: " + str(microbatch_size))
         if self.state.deepspeed_enabled or not isinstance(self.state.model, DistributedDataParallel):
             sync_context = contextlib.nullcontext()
         elif self.state.auto_microbatching and not self.first_batch_complete:
@@ -3154,7 +3151,6 @@ class Trainer:
 
         with sync_context:
             # Forward pass
-            print(torch.cuda.memory_allocated())
             self.engine.run_event(Event.BEFORE_FORWARD)
 
             with _get_precision_context(
