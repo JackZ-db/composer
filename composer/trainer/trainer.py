@@ -364,7 +364,7 @@ def _double_device_train_microbatch_size(state: State):
     original_microbatch_size = state.device_train_microbatch_size
     state.device_train_microbatch_size = min(int(original_microbatch_size * 2), batch_size)
     
-def closest_lower_power_of_2(n: int):
+def _closest_lower_power_of_2(n: int):
     if n <= 1:
         return 1
     return 1 << ((n - 1).bit_length() - 1)
@@ -382,6 +382,25 @@ def _clear_incomplete_train_states(state: State):
         state.scaler._per_optimizer_states = defaultdict(_refresh_per_optimizer_state)
     _fsdp_reshard_and_cleanup(state.model)
     torch.cuda.empty_cache()
+
+def _found_ooms_across_ranks(state: State, found_cuda_oom: bool):
+    all_ranks_finished = False
+    while not all_ranks_finished:
+        # Propagate across all ranks if any rank hit CUDA OOM
+        found_cuda_oom_tensor = state.device.tensor_to_device(
+            torch.tensor([found_cuda_oom], dtype=torch.uint8),
+        )
+        print("OOM sync in trainer")
+        dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
+        found_cuda_oom = found_cuda_oom_tensor.item()
+        # Check if any rank is still not done with the batch. This may happen if only a
+        # subset of ranks OOM, leaving some batches still in the forward pass
+        all_ranks_finished_tensor = state.device.tensor_to_device(torch.tensor([1], dtype=torch.uint8))
+        print("finish sync in trainer")
+        dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
+        all_ranks_finished = all_ranks_finished_tensor.item() == 1
+        print("finished trainer hook")
+    return found_cuda_oom
 
 def _adjust_device_eval_microbatch_size(evaluator: Evaluator):
     """Adjust device_eval_microbatch_size if we encounter OOM.
@@ -2821,26 +2840,8 @@ class Trainer:
                     raise
 
             if self.state.auto_microbatching:
-                print("finish")
-                all_ranks_finished = False
-                while not all_ranks_finished:
-                    # Propagate across all ranks if any rank hit CUDA OOM
-                    found_cuda_oom_tensor = self.state.device.tensor_to_device(
-                        torch.tensor([found_cuda_oom], dtype=torch.uint8),
-                    )
-                    print("OOM sync in trainer")
-                    dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
-                    found_cuda_oom = found_cuda_oom_tensor.item()
-                    # Check if any rank is still not done with the batch. This may happen if only a
-                    # subset of ranks OOM, leaving some batches still in the forward pass
-                    all_ranks_finished_tensor = self.state.device.tensor_to_device(torch.tensor([1], dtype=torch.uint8))
-                    print("finish sync in trainer")
-                    dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
-                    all_ranks_finished = all_ranks_finished_tensor.item() == 1
-                    print("finished trainer hook")
-                
-                #if self.auto_microbatch_size_found or retrying_for_thrashing:
-                print("out of OOM check")
+                found_cuda_oom = _found_ooms_across_ranks(self.state, found_cuda_oom)
+               
                 thrashing = False
                 if self.auto_microbatch_size_found and not retrying_from_thrashing:
                     # Check for thrashing between batches or once we think we've found an optimal non-OOM microbatch size
@@ -2881,7 +2882,7 @@ class Trainer:
                     # Find closest lower power of 2 if previously non-OOM microbatch size is OOMing
                     if self.state.device_train_microbatch_size == baseline_microbatch_size: 
                         lowest_oom_microbatch_size = self.state.device_train_microbatch_size
-                        baseline_microbatch_size = closest_lower_power_of_2(self.state.device_train_microbatch_size)
+                        baseline_microbatch_size = _closest_lower_power_of_2(self.state.device_train_microbatch_size)
                         self.state.device_train_microbatch_size = baseline_microbatch_size
                         highest_non_oom_microbatch_size = self.state.device_train_microbatch_size
 
@@ -2931,7 +2932,7 @@ class Trainer:
                         retrying_from_thrashing = True
                         self.num_consecutive_alloc_retries = 0
                         lowest_oom_microbatch_size = self.state.device_train_microbatch_size
-                        baseline_microbatch_size = closest_lower_power_of_2(self.state.device_train_microbatch_size)
+                        baseline_microbatch_size = _closest_lower_power_of_2(self.state.device_train_microbatch_size)
                         highest_non_oom_microbatch_size = baseline_microbatch_size
                         self.state.device_train_microbatch_size = baseline_microbatch_size
                         _clear_incomplete_train_states(self.state)
