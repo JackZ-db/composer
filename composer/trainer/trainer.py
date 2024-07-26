@@ -463,7 +463,7 @@ def _handle_downward_search_in_automicrobatching(state: State, lowest_oom_microb
             state.device_train_microbatch_size = int((lowest_oom_microbatch_size + highest_non_oom_microbatch_size) // 2)
 
             # Skip return and continue searching for the highest non-OOM size in this narrower range
-        return lowest_oom_microbatch_size, highest_non_oom_microbatch_size, baseline_microbatch_size, num_search_steps
+    return lowest_oom_microbatch_size, highest_non_oom_microbatch_size, baseline_microbatch_size, num_search_steps
 
 def _handle_upward_search_in_automicrobatching(state: State, lowest_oom_microbatch_size: int, highest_non_oom_microbatch_size: int, num_search_steps: int, max_search_steps: int):
     assert state.train_dataloader is not None
