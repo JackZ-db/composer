@@ -264,14 +264,14 @@ def prepare_fsdp_module(
         found_cuda_oom_tensor = torch.tensor([0], dtype=torch.uint8, device='cpu')
         #if sync_hook_counter >= 500:
         #print("waiting for OOM sync hook " + str(sync_hook_counter)) 
-        dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX', group=gloo_pg)
+        torch.distributed.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX', group=gloo_pg)
         found_cuda_oom = found_cuda_oom_tensor.item()
         # Signal current rank is still in batch
         #all_ranks_finished_tensor = device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
         all_ranks_finished_tensor = torch.tensor([0], dtype=torch.uint8, device='cpu')
         #if sync_hook_counter >= 500:
         #print("waiting for finish sync hook " + str(sync_hook_counter))
-        dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN', group=gloo_pg)
+        torch.distributed.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN', group=gloo_pg)
         #if sync_hook_counter >= 500:
         #print("done syncing sync hook " + str(sync_hook_counter))
         
