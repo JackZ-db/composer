@@ -1854,7 +1854,7 @@ class Trainer:
         # FSDP wrap if not using monolith checkpoint on rank 0 only
         if self.state.fsdp_config is not None and self.state.fsdp_config.auto_wrap and not self.state.load_monolith_rank0_only:
             with reproducibility.seed_context(self.state.rank_zero_seed):
-                self.auto_microbatch_hooks = prepare_fsdp_module(
+                self.auto_microbatch_hooks, self.fsdp_modules = prepare_fsdp_module(
                     model,
                     optimizers,
                     self.state.fsdp_config,
@@ -2023,7 +2023,7 @@ class Trainer:
             self.state.load_monolith_rank0_only
         ):
             with reproducibility.seed_context(self.state.rank_zero_seed):
-                self.auto_microbatch_hooks = prepare_fsdp_module(model, optimizers, self.state.fsdp_config, precision, device, auto_microbatching)
+                self.auto_microbatch_hooks, self.fsdp_modules = prepare_fsdp_module(model, optimizers, self.state.fsdp_config, precision, device, auto_microbatching)
 
         self.engine.run_event(Event.AFTER_LOAD)
 
@@ -3030,6 +3030,14 @@ class Trainer:
                         self.num_consecutive_thrashes = 0
                         _clear_incomplete_train_states(self.state)
                         lowest_oom_microbatch_size, highest_non_oom_microbatch_size, lower_bound_microbatch_size = _handle_thrashing_in_automicrobatching(self.state)
+                        if self.first_batch_complete:
+                            patch_unshard_for_automicrobatching(False)
+                            for _, module in self.fsdp_modules.items():
+                                if isinstance(module, FullyShardedDataParallel):
+                                    self.hook_handles.append(module.register_forward_pre_hook(self.sync_hook, prepend=True))
+                                    self.hook_handles.append(module.register_full_backward_pre_hook(self.sync_hook, prepend=True))
+                                else:
+                                    self.hook_handles.append(module.register_full_backward_hook(self.sync_hook))
                         continue
 
                     if not self.auto_microbatch_size_found: # microbatch size found in previous search
@@ -3050,12 +3058,10 @@ class Trainer:
                 )
             if self.auto_microbatch_size_found == False:
                 patch_unshard_for_automicrobatching(True)
-                print("pre wipe: " + str(torch.cuda.memory_allocated()))
                 for handle in self.auto_microbatch_hooks:
                     print("Removing " + str(handle))
                     handle.remove()
-                print("post wipe: " + str(torch.cuda.memory_allocated()))
-                self.auto_microbatch_hooks = []
+                self.auto_microbatch_hooks.clear()
             self.auto_microbatch_size_found = True
             if torch.cuda.is_available():
                 memory_stats = torch.cuda.memory_stats()

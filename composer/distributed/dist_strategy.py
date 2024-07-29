@@ -204,7 +204,7 @@ def prepare_fsdp_module(
     device: Device,
     auto_microbatching: bool,
     te_rng_seed: int = 1234,
-) -> list:
+) -> list, dict:
     """Prepare a module (assumed ComposerModel) and optimizer for use with :class:`torch.distributed.fsdp.FullyShardedDataParallel`.
 
     Args:
@@ -780,4 +780,4 @@ def prepare_fsdp_module(
             optimizer_specific_info.update({'params': list(model.parameters())})
             optim.add_param_group(optimizer_specific_info)
             
-    return hook_handles
+    return hook_handles, dict(fsdp_obj.named_modules())
