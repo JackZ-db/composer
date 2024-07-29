@@ -3048,6 +3048,7 @@ class Trainer:
                         f'{original_microbatch_size} -> {self.state.device_train_microbatch_size}.',
                         ),
                 )
+            """
             if self.auto_microbatch_size_found == False:
                 patch_unshard_for_automicrobatching(True)
                 print("pre wipe: " + str(torch.cuda.memory_allocated()))
@@ -3056,6 +3057,7 @@ class Trainer:
                     handle.remove()
                 print("post wipe: " + str(torch.cuda.memory_allocated()))
                 self.auto_microbatch_hooks = []
+            """
             self.auto_microbatch_size_found = True
             if torch.cuda.is_available():
                 memory_stats = torch.cuda.memory_stats()
