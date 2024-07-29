@@ -325,6 +325,7 @@ def unshard_with_sync(self):
     mixed precision, then the parameter is forced to full precision.
     """
     from composer.utils.dist import gloo_pg
+    print(gloo_pg)
     if not self.needs_unshard():
         # Even when not needing an unshard, we should switch to using
         # the unsharded flat parameter
