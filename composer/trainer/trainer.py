@@ -408,7 +408,7 @@ def _found_ooms_across_ranks(state: State, found_cuda_oom: bool):
             torch.tensor([found_cuda_oom], dtype=torch.uint8),
         )
         """
-        found_cuda_oom_tensor = torch.tensor([found_cuda_oom], dtype=torch.uint8).cpu()
+        found_cuda_oom_tensor = torch.tensor([found_cuda_oom], dtype=torch.uint8, device='cpu')
 
         dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
         found_cuda_oom = found_cuda_oom_tensor.item()
@@ -417,7 +417,7 @@ def _found_ooms_across_ranks(state: State, found_cuda_oom: bool):
         """
         all_ranks_finished_tensor = state.device.tensor_to_device(torch.tensor([1], dtype=torch.uint8))
         """
-        all_ranks_finished_tensor = torch.tensor([1], dtype=torch.uint8).cpu()
+        all_ranks_finished_tensor = torch.tensor([1], dtype=torch.uint8, device='cpu')
 
         dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
         all_ranks_finished = all_ranks_finished_tensor.item() == 1
@@ -443,7 +443,7 @@ def _update_num_consecutive_thrashes(state: State, num_consecutive_thrashes: int
     #alloc_retry_tensor = state.device.tensor_to_device(
     #        torch.tensor([alloc_retry_this_batch], dtype=torch.uint8),
     #    )
-    alloc_retry_tensor = torch.tensor([alloc_retry_this_batch], dtype=torch.uint8).cpu()
+    alloc_retry_tensor = torch.tensor([alloc_retry_this_batch], dtype=torch.uint8, device='cpu')
     dist.all_reduce(alloc_retry_tensor, reduce_operation='MAX')
     alloc_retry_this_batch = alloc_retry_tensor.item() == 1
     if alloc_retry_this_batch:
