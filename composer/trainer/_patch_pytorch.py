@@ -322,6 +322,7 @@ def unshard_with_sync(self):
     If FSDP is in :meth:`summon_full_params` and the handle uses parameter
     mixed precision, then the parameter is forced to full precision.
     """
+    from composer.utils.dist import gloo_pg
     if not self.needs_unshard():
         # Even when not needing an unshard, we should switch to using
         # the unsharded flat parameter
@@ -337,13 +338,13 @@ def unshard_with_sync(self):
     # Check if any other rank hit an OOM
     #found_cuda_oom_tensor = torch.tensor([0], dtype=torch.uint8).to(self.device, non_blocking=True)
     found_cuda_oom_tensor = torch.tensor([0], dtype=torch.uint8, device='cpu')
-    dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
+    dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX', group=gloo_pg)
     found_cuda_oom = found_cuda_oom_tensor.item()
     # Signal current rank is still in batch
     #all_ranks_finished_tensor = torch.tensor([0], dtype=torch.uint8).to(self.device, non_blocking=True)
     all_ranks_finished_tensor = torch.tensor([0], dtype=torch.uint8, device='cpu')
 
-    dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
+    dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN', group=gloo_pg)
     
     if found_cuda_oom == 1:
         #print("broke in monkey")

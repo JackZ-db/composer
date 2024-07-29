@@ -31,7 +31,8 @@ class DeviceGPU(Device):
         allow_tf32 (bool, optional): Whether to allow TF32 matrix multiplications. Defaults to True.
             For more information, see :ref:`torch:tf32_on_ampere`.
     """
-    dist_backend = 'undefined'
+    #dist_backend = 'undefined'
+    dist_backend = 'nccl'
     name = 'gpu'
 
     def __init__(

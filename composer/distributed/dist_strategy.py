@@ -196,6 +196,7 @@ def prepare_tp_module(
     )
 
 
+
 def prepare_fsdp_module(
     model: torch.nn.Module,
     optimizers: Optional[Union[torch.optim.Optimizer, Sequence[torch.optim.Optimizer]]],
@@ -217,8 +218,8 @@ def prepare_fsdp_module(
         te_rng_seed(int): The seed to use for the Transformer Engine activation checkpointing RNG. Defaults to 1234.
     """
 
+   
     hook_handles = []
-
     # Check sync_module_states is True for mixed initialization or HSDP
     if fsdp_config.sync_module_states == False:
         rank_on_meta = 1 if next(model.parameters()).device.type == 'meta' else 0
@@ -238,6 +239,8 @@ def prepare_fsdp_module(
     # may happen when close to memory limit or with uneven memory usage across ranks. Since we
     # need to do this before the model weights are gathered for the next FSDP block, we wrap every
     # FSPD block with a hook that checks if any other rank OOMed.
+    from composer.utils.dist import gloo_pg
+
     def sync_hook(*args):
         """
         global sync_hook_counter
@@ -254,7 +257,6 @@ def prepare_fsdp_module(
 
         module = args[0]
         """
-
         #print(f"Sync hook {sync_hook_counter} called for module: {module}")
         #print(f"Hook type: {hook_type}")
         # Check if any other rank hit an OOM
@@ -262,14 +264,14 @@ def prepare_fsdp_module(
         found_cuda_oom_tensor = torch.tensor([0], dtype=torch.uint8, device='cpu')
         #if sync_hook_counter >= 500:
         #print("waiting for OOM sync hook " + str(sync_hook_counter)) 
-        dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
+        dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX', group=gloo_pg)
         found_cuda_oom = found_cuda_oom_tensor.item()
         # Signal current rank is still in batch
         #all_ranks_finished_tensor = device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
         all_ranks_finished_tensor = torch.tensor([0], dtype=torch.uint8, device='cpu')
         #if sync_hook_counter >= 500:
         #print("waiting for finish sync hook " + str(sync_hook_counter))
-        dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
+        dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN', group=gloo_pg)
         #if sync_hook_counter >= 500:
         #print("done syncing sync hook " + str(sync_hook_counter))
         
