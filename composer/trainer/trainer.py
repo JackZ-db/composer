@@ -49,6 +49,8 @@ from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader, DistributedSampler
 from torchmetrics import Metric
 
+from composer.utils.dist import gloo_pg
+
 if version.parse(torch.__version__) >= version.parse('2.3.0'):
     from torch.amp.grad_scaler import GradScaler, _refresh_per_optimizer_state  # type: ignore
 else:
@@ -392,6 +394,7 @@ def _clear_incomplete_train_states(state: State):
     _fsdp_reshard_and_cleanup(state.model)
     torch.cuda.empty_cache()
 
+
 def _found_ooms_across_ranks(state: State, found_cuda_oom: bool):
     """Check if at least one rank, including the local rank, OOM'd in the forward/backward pass
     when using automicrobatching. This may happen when close to memory limit or with uneven memory 
@@ -410,7 +413,7 @@ def _found_ooms_across_ranks(state: State, found_cuda_oom: bool):
         """
         found_cuda_oom_tensor = torch.tensor([found_cuda_oom], dtype=torch.uint8, device='cpu')
 
-        dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
+        torch.distributed.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX', group=gloo_pg)
         found_cuda_oom = found_cuda_oom_tensor.item()
         # Check if any rank is still not done with the batch. This may happen if only a
         # subset of ranks OOM, leaving some batches still in the forward pass
@@ -419,7 +422,7 @@ def _found_ooms_across_ranks(state: State, found_cuda_oom: bool):
         """
         all_ranks_finished_tensor = torch.tensor([1], dtype=torch.uint8, device='cpu')
 
-        dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
+        torch.distributed.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN', group=gloo_pg)
         all_ranks_finished = all_ranks_finished_tensor.item() == 1
     return found_cuda_oom
 
@@ -444,7 +447,7 @@ def _update_num_consecutive_thrashes(state: State, num_consecutive_thrashes: int
     #        torch.tensor([alloc_retry_this_batch], dtype=torch.uint8),
     #    )
     alloc_retry_tensor = torch.tensor([alloc_retry_this_batch], dtype=torch.uint8, device='cpu')
-    dist.all_reduce(alloc_retry_tensor, reduce_operation='MAX')
+    torch.distributed.all_reduce(alloc_retry_tensor, reduce_operation='MAX', group=gloo_pg)
     alloc_retry_this_batch = alloc_retry_tensor.item() == 1
     if alloc_retry_this_batch:
         num_consecutive_thrashes += 1
@@ -3241,12 +3244,12 @@ class Trainer:
                 # Check if any other rank hit an OOM
                 #found_cuda_oom_tensor = self.state.device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
                 found_cuda_oom_tensor = torch.tensor([0], dtype=torch.uint8, device='cpu')
-                dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
+                torch.distributed.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX', group=gloo_pg)
                 found_cuda_oom = found_cuda_oom_tensor.item()
                 # Signal current rank is still in batch
                 #all_ranks_finished_tensor = self.state.device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
                 all_ranks_finished_tensor = torch.tensor([0], dtype=torch.uint8, device='cpu')
-                dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
+                torch.distributed.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN', group=gloo_pg)
 
                 if found_cuda_oom == 1:
                     raise RuntimeError('CUDA out of memory encountered on a different rank')
