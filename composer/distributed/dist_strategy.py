@@ -21,6 +21,8 @@ from torch.distributed.fsdp._common_utils import clean_tensor_name
 from torch.nn.parallel import DistributedDataParallel
 from torchmetrics import Metric, MetricCollection
 
+from torch._C._distributed_c10d import ReduceOp
+
 from composer.core import Precision, State
 from composer.devices import Device
 from composer.distributed.meta_safe_apply import meta_safe_apply
@@ -264,14 +266,14 @@ def prepare_fsdp_module(
         found_cuda_oom_tensor = torch.tensor([0], dtype=torch.uint8, device='cpu')
         #if sync_hook_counter >= 500:
         #print("waiting for OOM sync hook " + str(sync_hook_counter)) 
-        torch.distributed.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX', group=gloo_pg)
+        torch.distributed.all_reduce(found_cuda_oom_tensor, op=ReduceOp.MAX, group=gloo_pg)
         found_cuda_oom = found_cuda_oom_tensor.item()
         # Signal current rank is still in batch
         #all_ranks_finished_tensor = device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
         all_ranks_finished_tensor = torch.tensor([0], dtype=torch.uint8, device='cpu')
         #if sync_hook_counter >= 500:
         #print("waiting for finish sync hook " + str(sync_hook_counter))
-        torch.distributed.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN', group=gloo_pg)
+        torch.distributed.all_reduce(all_ranks_finished_tensor, op=ReduceOp.MIN, group=gloo_pg)
         #if sync_hook_counter >= 500:
         #print("done syncing sync hook " + str(sync_hook_counter))
         
