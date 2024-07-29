@@ -410,8 +410,6 @@ def _found_ooms_across_ranks(state: State, found_cuda_oom: bool):
         """
         found_cuda_oom_tensor = torch.tensor([found_cuda_oom], dtype=torch.uint8).cpu()
 
-        with dist.all_reduce(backend='gloo'):
-            dist.all_reduce(found_cuda_oom_tensor, op=dist.ReduceOp.MAX)
         dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
         found_cuda_oom = found_cuda_oom_tensor.item()
         # Check if any rank is still not done with the batch. This may happen if only a
@@ -442,9 +440,10 @@ def _update_num_consecutive_thrashes(state: State, num_consecutive_thrashes: int
         alloc_retry_this_batch = 0
 
     # Propagate across all ranks if any rank had alloc retries this batch
-    alloc_retry_tensor = state.device.tensor_to_device(
-            torch.tensor([alloc_retry_this_batch], dtype=torch.uint8),
-        )
+    #alloc_retry_tensor = state.device.tensor_to_device(
+    #        torch.tensor([alloc_retry_this_batch], dtype=torch.uint8),
+    #    )
+    alloc_retry_tensor = torch.tensor([alloc_retry_this_batch], dtype=torch.uint8).cpu()
     dist.all_reduce(alloc_retry_tensor, reduce_operation='MAX')
     alloc_retry_this_batch = alloc_retry_tensor.item() == 1
     if alloc_retry_this_batch:

@@ -335,13 +335,14 @@ def unshard_with_sync(self):
     unsharded_flat_param = self._alloc_padded_unsharded_flat_param()
     #putting this out here for monkepatch
     # Check if any other rank hit an OOM
-    found_cuda_oom_tensor = torch.tensor([0], dtype=torch.uint8).to(self.device, non_blocking=True)
-
+    #found_cuda_oom_tensor = torch.tensor([0], dtype=torch.uint8).to(self.device, non_blocking=True)
+    found_cuda_oom_tensor = torch.tensor([0], dtype=torch.uint8).cpu()
     dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
     found_cuda_oom = found_cuda_oom_tensor.item()
     # Signal current rank is still in batch
-    all_ranks_finished_tensor = torch.tensor([0], dtype=torch.uint8).to(self.device, non_blocking=True)
-    
+    #all_ranks_finished_tensor = torch.tensor([0], dtype=torch.uint8).to(self.device, non_blocking=True)
+    all_ranks_finished_tensor = torch.tensor([0], dtype=torch.uint8).cpu()
+
     dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
     
     if found_cuda_oom == 1:
