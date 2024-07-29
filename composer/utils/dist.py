@@ -582,13 +582,16 @@ def initialize_dist(device: Union[str, Device], timeout: float = 300.0) -> None:
         if version.parse(torch_xla.__version__) < version.parse('2.1.0'):
             raise RuntimeError(f'PyTorch XLA version must be at least 2.1.0, found {torch_xla.__version__}.')
         # XLA initialization requires the init_method to be set
-        dist.init_process_group(device_obj.dist_backend, init_method='xla://')
+        #dist.init_process_group(device_obj.dist_backend, init_method='xla://')
+        dist.init_process_group(init_method='xla://')
     elif dist_env_vars_match_defaults:
         # Fill in the remaining single-rank variables
         os.environ.update(dist_env_var_defaults)
-        dist.init_process_group(device_obj.dist_backend, store=dist.HashStore(), world_size=1, rank=0)
+        #dist.init_process_group(device_obj.dist_backend, store=dist.HashStore(), world_size=1, rank=0)
+        dist.init_process_group(store=dist.HashStore(), world_size=1, rank=0)
     else:
-        dist.init_process_group(device_obj.dist_backend, timeout=timeout_timedelta)
+        #dist.init_process_group(device_obj.dist_backend, timeout=timeout_timedelta)
+        dist.init_process_group(timeout=timeout_timedelta)
 
 
 def get_sampler(
