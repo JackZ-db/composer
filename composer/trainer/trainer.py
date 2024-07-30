@@ -134,8 +134,6 @@ from composer.utils import (
     reproducibility,
 )
 
-from composer.utils import format_name_with_dist_and_time
-
 
 if is_xla_installed():
     import torch_xla.core.xla_model as xm
@@ -3056,7 +3054,7 @@ class Trainer:
                         f'{original_microbatch_size} -> {self.state.device_train_microbatch_size}.',
                         ),
                 )
-            if self.auto_microbatch_size_found == False:
+            if len(self.auto_microbatch_hooks) > 0:
                 patch_unshard_for_automicrobatching(True)
                 for handle in self.auto_microbatch_hooks:
                     print("Removing " + str(handle))
@@ -3689,6 +3687,16 @@ class Trainer:
         last_wct = datetime.datetime.now()
 
         with torch.no_grad(), model_eval_mode(self.state.model):
+            # add hooks for eval
+            if self.first_batch_complete:
+                patch_unshard_for_automicrobatching(False)
+                for _ , module in self.fsdp_modules.items():
+                    if isinstance(module, FullyShardedDataParallel):
+                        self.hook_handles.append(module.register_forward_pre_hook(self.sync_hook, prepend=True))
+                        self.hook_handles.append(module.register_full_backward_pre_hook(self.sync_hook, prepend=True))
+                    else:
+                        self.hook_handles.append(module.register_full_backward_hook(self.sync_hook))
+
             self.state.set_dataloader(data_spec.dataloader, evaluator.label, subset_num_batches)
             assert self.state.dataloader is not None, 'dataloader is set'
 
