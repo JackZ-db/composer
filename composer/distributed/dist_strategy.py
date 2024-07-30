@@ -32,7 +32,7 @@ from composer.distributed.mosaic_parallelism import (
     set_custom_fsdp_module_kwargs,
 )
 from composer.utils import FSDPConfig, StringEnum, TPConfig, dist, ensure_tuple
-
+from typing import Tuple
 __all__ = ['DDPSyncStrategy', 'ddp_sync_context', 'prepare_ddp_module', 'prepare_fsdp_module', 'prepare_tp_module']
 
 log = logging.getLogger(__name__)
@@ -204,7 +204,7 @@ def prepare_fsdp_module(
     device: Device,
     auto_microbatching: bool,
     te_rng_seed: int = 1234,
-) -> list, dict:
+) -> Tuple[list, dict]:
     """Prepare a module (assumed ComposerModel) and optimizer for use with :class:`torch.distributed.fsdp.FullyShardedDataParallel`.
 
     Args:
