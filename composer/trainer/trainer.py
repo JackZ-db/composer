@@ -155,7 +155,6 @@ def _raise_missing_argument_exception(arg_name: str):
         f'{Trainer.__name__}.{Trainer.fit.__name__}({arg_name}=...).'
     ))
 
-
 def _scale_max_duration_by_ssr(
     scale_schedule_ratio: float,
     orig_max_duration: Optional[Time[int]],
@@ -2935,6 +2934,20 @@ class Trainer:
 
         first_success = False
 
+        def sync_hook(*args):
+
+            # Check if any other rank hit an OOM
+            found_cuda_oom_tensor = self.state.device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
+            dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
+            found_cuda_oom = found_cuda_oom_tensor.item()
+            # Signal current rank is still in batch
+            all_ranks_finished_tensor = self.state.device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
+            dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
+            
+            if found_cuda_oom == 1:
+                print("broke")
+                raise RuntimeError('CUDA out of memory encountered on a different rank')
+
         while True:
             # Reset train_metrics on every batch
             # Placing reset here ensures that if auto grad accum catches an OOM, incomplete metric state is cleared
@@ -3032,10 +3045,10 @@ class Trainer:
                             patch_unshard_for_automicrobatching(False)
                             for _, module in self.fsdp_modules.items():
                                 if isinstance(module, FullyShardedDataParallel):
-                                    self.automicrobatch_hook_handles.append(module.register_forward_pre_hook(self.sync_hook, prepend=True))
-                                    self.automicrobatch_hook_handles.append(module.register_full_backward_pre_hook(self.sync_hook, prepend=True))
+                                    self.automicrobatch_hook_handles.append(module.register_forward_pre_hook(sync_hook, prepend=True))
+                                    self.automicrobatch_hook_handles.append(module.register_full_backward_pre_hook(sync_hook, prepend=True))
                                 else:
-                                    self.automicrobatch_hook_handles.append(module.register_full_backward_hook(self.sync_hook))
+                                    self.automicrobatch_hook_handles.append(module.register_full_backward_hook(sync_hook))
                         continue
 
                     if not self.auto_microbatch_size_found: # microbatch size found in previous search
@@ -3686,16 +3699,30 @@ class Trainer:
 
         last_wct = datetime.datetime.now()
 
+        def sync_hook(*args):
+
+            # Check if any other rank hit an OOM
+            found_cuda_oom_tensor = self.state.device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
+            dist.all_reduce(found_cuda_oom_tensor, reduce_operation='MAX')
+            found_cuda_oom = found_cuda_oom_tensor.item()
+            # Signal current rank is still in batch
+            all_ranks_finished_tensor = self.state.device.tensor_to_device(torch.tensor([0], dtype=torch.uint8))
+            dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
+            
+            if found_cuda_oom == 1:
+                print("broke")
+                raise RuntimeError('CUDA out of memory encountered on a different rank')
+            
         with torch.no_grad(), model_eval_mode(self.state.model):
             # add hooks for eval
             if self.first_batch_complete:
                 patch_unshard_for_automicrobatching(False)
                 for _ , module in self.fsdp_modules.items():
                     if isinstance(module, FullyShardedDataParallel):
-                        self.automicrobatch_hook_handles.append(module.register_forward_pre_hook(self.sync_hook, prepend=True))
-                        self.automicrobatch_hook_handles.append(module.register_full_backward_pre_hook(self.sync_hook, prepend=True))
+                        self.automicrobatch_hook_handles.append(module.register_forward_pre_hook(sync_hook, prepend=True))
+                        self.automicrobatch_hook_handles.append(module.register_full_backward_pre_hook(sync_hook, prepend=True))
                     else:
-                        self.automicrobatch_hook_handles.append(module.register_full_backward_hook(self.sync_hook))
+                        self.automicrobatch_hook_handles.append(module.register_full_backward_hook(sync_hook))
 
             self.state.set_dataloader(data_spec.dataloader, evaluator.label, subset_num_batches)
             assert self.state.dataloader is not None, 'dataloader is set'
