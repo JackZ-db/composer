@@ -1852,7 +1852,7 @@ class Trainer:
         # FSDP wrap if not using monolith checkpoint on rank 0 only
         if self.state.fsdp_config is not None and self.state.fsdp_config.auto_wrap and not self.state.load_monolith_rank0_only:
             with reproducibility.seed_context(self.state.rank_zero_seed):
-                self.auto_microbatch_hooks, self.fsdp_modules = prepare_fsdp_module(
+                self.automicrobatch_hook_handles, self.fsdp_modules = prepare_fsdp_module(
                     model,
                     optimizers,
                     self.state.fsdp_config,
@@ -2021,7 +2021,7 @@ class Trainer:
             self.state.load_monolith_rank0_only
         ):
             with reproducibility.seed_context(self.state.rank_zero_seed):
-                self.auto_microbatch_hooks, self.fsdp_modules = prepare_fsdp_module(model, optimizers, self.state.fsdp_config, precision, device, auto_microbatching)
+                self.automicrobatch_hook_handles, self.fsdp_modules = prepare_fsdp_module(model, optimizers, self.state.fsdp_config, precision, device, auto_microbatching)
 
         self.engine.run_event(Event.AFTER_LOAD)
 
@@ -3032,10 +3032,10 @@ class Trainer:
                             patch_unshard_for_automicrobatching(False)
                             for _, module in self.fsdp_modules.items():
                                 if isinstance(module, FullyShardedDataParallel):
-                                    self.hook_handles.append(module.register_forward_pre_hook(self.sync_hook, prepend=True))
-                                    self.hook_handles.append(module.register_full_backward_pre_hook(self.sync_hook, prepend=True))
+                                    self.automicrobatch_hook_handles.append(module.register_forward_pre_hook(self.sync_hook, prepend=True))
+                                    self.automicrobatch_hook_handles.append(module.register_full_backward_pre_hook(self.sync_hook, prepend=True))
                                 else:
-                                    self.hook_handles.append(module.register_full_backward_hook(self.sync_hook))
+                                    self.automicrobatch_hook_handles.append(module.register_full_backward_hook(self.sync_hook))
                         continue
 
                     if not self.auto_microbatch_size_found: # microbatch size found in previous search
@@ -3692,10 +3692,10 @@ class Trainer:
                 patch_unshard_for_automicrobatching(False)
                 for _ , module in self.fsdp_modules.items():
                     if isinstance(module, FullyShardedDataParallel):
-                        self.hook_handles.append(module.register_forward_pre_hook(self.sync_hook, prepend=True))
-                        self.hook_handles.append(module.register_full_backward_pre_hook(self.sync_hook, prepend=True))
+                        self.automicrobatch_hook_handles.append(module.register_forward_pre_hook(self.sync_hook, prepend=True))
+                        self.automicrobatch_hook_handles.append(module.register_full_backward_pre_hook(self.sync_hook, prepend=True))
                     else:
-                        self.hook_handles.append(module.register_full_backward_hook(self.sync_hook))
+                        self.automicrobatch_hook_handles.append(module.register_full_backward_hook(self.sync_hook))
 
             self.state.set_dataloader(data_spec.dataloader, evaluator.label, subset_num_batches)
             assert self.state.dataloader is not None, 'dataloader is set'
