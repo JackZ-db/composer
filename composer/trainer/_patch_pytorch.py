@@ -1095,7 +1095,7 @@ if version.parse(torch.__version__) >= version.parse('2.3.0') and version.parse(
         all_ranks_finished_tensor = torch.tensor([0], dtype=torch.uint8).to(self.device, non_blocking=True)
 
         dist.all_reduce(all_ranks_finished_tensor, reduce_operation='MIN')
-
+        print("sync")
         if found_cuda_oom == 1:
             raise RuntimeError('CUDA out of memory encountered on a different rank')
         padded_unsharded_flat_param = self._all_gather_flat_param(unsharded_flat_param)
