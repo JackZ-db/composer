@@ -32,7 +32,6 @@ from composer.trainer import Trainer
 from tests.checkpoint.helpers import init_model, init_model_and_optimizer, init_state
 from tests.common.compare import deep_compare
 from tests.common import (
-    EventCounterCallback,
     RandomClassificationDataset,
 )
 
@@ -422,11 +421,17 @@ def test_load_model_checkpoint_and_eval(
         if dist.get_global_rank() == 0:
             deep_compare(original_state_dict, new_state_dict)
 
+        dataset = RandomClassificationDataset(
+            shape=(3,),
+            size=100,
+            num_classes=8
+        )
+        
         trainer = Trainer(
-            #eval_dataloader=DataLoader(
-                #dataset=dataset,
-                #sampler=dist.get_sampler(dataset),
-            #),
+            eval_dataloader=DataLoader(
+                dataset=dataset,
+                sampler=dist.get_sampler(dataset),
+            ),
             model=new_model,
         )
 
