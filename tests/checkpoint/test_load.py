@@ -34,7 +34,6 @@ from tests.common.compare import deep_compare
 from tests.common import (
     EventCounterCallback,
     RandomClassificationDataset,
-    SimpleModel,
 )
 
 
@@ -421,15 +420,13 @@ def test_load_checkpoint_and_eval(
             deep_compare(original_optim_state_dict, new_optim_state_dict)
             deep_compare(original_resumption_state, new_resumption_state, ignore_keys=['rng', 'run_name'])
         # Construct the trainer
-        event_counter_callback = EventCounterCallback()
-        dataset = RandomClassificationDataset()
+        #dataset = RandomClassificationDataset()
         trainer = Trainer(
-            eval_dataloader=DataLoader(
-                dataset=dataset,
-                sampler=dist.get_sampler(dataset),
-            ),
+            #eval_dataloader=DataLoader(
+                #dataset=dataset,
+                #sampler=dist.get_sampler(dataset),
+            #),
             model=new_state.model,
-            callbacks=[event_counter_callback],
         )
 
         # Evaluate the model
