@@ -422,9 +422,9 @@ def test_load_model_checkpoint_and_eval(
             deep_compare(original_state_dict, new_state_dict)
 
         dataset = RandomClassificationDataset(
-            shape=(3,),
+            shape=(8,),
             size=100,
-            num_classes=8
+            num_classes=3
         )
         
         trainer = Trainer(
