@@ -385,13 +385,14 @@ def test_load_model_checkpoint_and_eval(
 
     # Save a model checkpoint
     model, _ = init_model(use_composer_model=True, use_fsdp=sharded_checkpoint, device='cuda')
+    print("Type: " + str(type(model)))
     save_path = os.path.join(destination_dir, 'model.pt') if not sharded_checkpoint else destination_dir
     saved_path = save_model_to_disk(model, save_path, sharded_checkpoint=sharded_checkpoint)
 
     # Get the original model's state dict
     original_state_dict = get_model_state_dict(model, sharded_state_dict=False)
     # Load the model checkpoint
-    new_model, _ = init_model(use_fsdp=sharded_model, device='cuda')
+    new_model, _ = init_model(use_composer_model=True, use_fsdp=sharded_model, device='cuda')
     if saved_path is not None:
         load_path = saved_path if not sharded_checkpoint else str(Path(saved_path).parent)
     else:
