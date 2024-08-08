@@ -53,7 +53,3 @@ def print_trainer_samples():
 
     print(f"Collected {len(samples)} batches of samples.")
 
-# Run the function to print samples
-seed = 42
-num_batches = 5
-print_trainer_samples(seed, num_batches)
