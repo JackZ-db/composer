@@ -5,6 +5,7 @@ from composer.models import ComposerModel
 from tests.common import SimpleModel, RandomClassificationDataset
 from composer.utils import dist, reproducibility
 
+@pytest.mark.gpu
 def print_trainer_samples(seed: int, num_batches: int):
     # Set the seed for reproducibility
     reproducibility.seed_all(seed)
