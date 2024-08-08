@@ -4,6 +4,7 @@ from composer import Trainer
 from composer.models import ComposerModel
 from tests.common import SimpleModel, RandomClassificationDataset
 from composer.utils import dist, reproducibility
+import pytest 
 
 @pytest.mark.gpu
 def print_trainer_samples():
