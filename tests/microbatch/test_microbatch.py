@@ -7,7 +7,7 @@ from composer.utils import dist, reproducibility
 import pytest 
 
 @pytest.mark.gpu
-def print_trainer_samples():
+def test_print_trainer_samples():
     seed = 42
     num_batches = 5
     # Set the seed for reproducibility
