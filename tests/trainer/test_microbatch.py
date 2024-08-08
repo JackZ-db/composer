@@ -52,4 +52,5 @@ def print_trainer_samples():
             break
 
     print(f"Collected {len(samples)} batches of samples.")
+    assert False
 
