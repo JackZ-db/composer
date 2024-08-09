@@ -3035,6 +3035,7 @@ class Trainer:
             current_batch = self.state.batch
 
             for microbatch_idx, self.state.batch in enumerate(microbatches):
+                print(self.state.batch)
                 is_final_microbatch = microbatch_idx + 1 == len(microbatches)
                 microbatch_loss_dict = self._train_microbatch(use_grad_scaling, current_batch_size, is_final_microbatch)
 
