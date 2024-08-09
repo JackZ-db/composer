@@ -32,6 +32,11 @@ def test_print_trainer_samples():
 
     # Create a model
     model = SimpleModel()
+    class SampleCollector(Callback):
+        def after_train_batch(self, state: State, logger: Logger):
+            samples.append(state.batch[0].clone())
+
+    sampleCollector = SampleCollector()
 
     # Create a trainer
     trainer = Trainer(
@@ -39,7 +44,7 @@ def test_print_trainer_samples():
         train_dataloader=dataloader,
         max_duration=10,
         device_train_microbatch_size=2,
-        callbacks=[SampleCollector()],
+        callbacks=[sampleCollector],
         seed=42
         )
 
@@ -47,9 +52,6 @@ def test_print_trainer_samples():
     samples = []
 
     
-    class SampleCollector(Callback):
-        def after_train_batch(self, state: State, logger: Logger):
-            samples.append(state.batch[0].clone())
     
     trainer.fit()
     
