@@ -5,6 +5,13 @@ from composer.models import ComposerModel
 from tests.common import SimpleModel, RandomClassificationDataset
 from composer.utils import dist, reproducibility
 import pytest 
+from composer.loggers import InMemoryLogger, Logger, RemoteUploaderDownloader
+
+
+from composer import Callback, Evaluator, Trainer
+from composer.algorithms import CutOut, LabelSmoothing
+from composer.core import Event, Precision, State, Time, TimeUnit
+from composer.devices import Device
 
 @pytest.mark.gpu
 def test_print_trainer_samples():
@@ -40,16 +47,19 @@ def test_print_trainer_samples():
     # List to store samples
     samples = []
 
-    # Train and collect samples
-    for batch in trainer.fit_iterator():
-        sample = batch[0].clone()  # Assuming the first element of the batch is the input data
-        samples.append(sample)
-        print(f"Batch {len(samples)}:")
+    
+    class SampleCollector(Callback):
+        def after_train_batch(self, state: State, logger: Logger):
+            samples.append(state.batch[0].clone())
+    
+    trainer.fit(callbacks=[SampleCollector()])
+    
+    for i, sample in enumerate(samples, 1):
+        print(f"Batch {i}:")
         print(sample)
-        print()  # Add a blank line for readability
-
-        if len(samples) == num_batches:
-            break
+        print()
+    
+    print(f"Collected {len(samples)} batches of samples.")
 
     print(f"Collected {len(samples)} batches of samples.")
     assert False
