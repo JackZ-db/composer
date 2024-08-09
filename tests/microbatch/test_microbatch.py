@@ -26,23 +26,22 @@ def test_print_trainer_samples():
     # Create a dataloader
     dataloader = DataLoader(
         dataset=dataset,
-        batch_size=4,
+        batch_size=8,
         sampler=dist.get_sampler(dataset),
     )
 
     # Create a model
     model = SimpleModel()
 
-    # Configuration for the trainer
-    config = {
-        'model': model,
-        'train_dataloader': dataloader,
-        'max_duration': f'{num_batches}ba',  # Train for specified number of batches
-        'seed': seed,
-    }
-
     # Create a trainer
-    trainer = Trainer(**config)
+    trainer = Trainer(
+        model=model,
+        train_dataloader=dataloader,
+        max_duration=10,
+        device_train_microbatch_size=2,
+        callbacks=[SampleCollector()],
+        seed=42
+        )
 
     # List to store samples
     samples = []
@@ -52,7 +51,7 @@ def test_print_trainer_samples():
         def after_train_batch(self, state: State, logger: Logger):
             samples.append(state.batch[0].clone())
     
-    trainer.fit(callbacks=[SampleCollector()])
+    trainer.fit()
     
     for i, sample in enumerate(samples, 1):
         print(f"Batch {i}:")
